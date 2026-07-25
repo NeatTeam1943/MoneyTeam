@@ -68,11 +68,21 @@ export default function Shopping() {
 
   // "requested" = still wanted (not received / cancelled)
   const open = useMemo(() => enriched.filter((r) => r.status === 'pending_approval' || r.status === 'approved'), [enriched])
-  const byCategory = useMemo(() => {
+
+  // ALL-TIME: every item ever requested, by category (every status included)
+  const byCategoryAll = useMemo(() => {
+    const m = {}
+    for (const r of enriched) { const k = r.categoryName || '—'; m[k] = (m[k] || 0) + (Number(r.est_price) || 0) * (r.quantity || 1) }
+    return Object.entries(m).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
+  }, [enriched])
+
+  // STILL OUTSTANDING: only items not yet paid for — pending_approval / approved
+  const byCategoryOpen = useMemo(() => {
     const m = {}
     for (const r of open) { const k = r.categoryName || '—'; m[k] = (m[k] || 0) + (Number(r.est_price) || 0) * (r.quantity || 1) }
     return Object.entries(m).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
   }, [open])
+
   const byStatus = useMemo(() => {
     const m = {}
     for (const r of enriched) { const k = t(r.status); m[k] = (m[k] || 0) + (Number(r.est_price) || 0) * (r.quantity || 1) }
@@ -140,10 +150,10 @@ export default function Shopping() {
     <div>
       <div className="charts">
         <div className="panel panel-pad">
-          <div className="section-title" style={{ marginTop: 0 }}>{t('requestedByCategory')}</div>
+          <div className="section-title" style={{ marginTop: 0 }}>{t('requestedAllByCategory')}</div>
           <div style={{ height: 220, direction: 'ltr' }}>
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={byCategory} layout="vertical" margin={{ left: 8, right: 16 }}>
+              <BarChart data={byCategoryAll} layout="vertical" margin={{ left: 8, right: 16 }}>
                 <XAxis type="number" tick={axis} allowDecimals={false} /><YAxis type="category" dataKey="name" tick={axis} width={130} interval={0} />
                 <Tooltip contentStyle={tip} formatter={(v) => money(v)} />
                 <Bar dataKey="value" fill="#ff9100" radius={[0, 3, 3, 0]} />
@@ -172,6 +182,18 @@ export default function Shopping() {
                 <XAxis type="number" tick={axis} allowDecimals={false} /><YAxis type="category" dataKey="name" tick={axis} width={130} interval={0} />
                 <Tooltip contentStyle={tip} formatter={(v) => money(v)} />
                 <Bar dataKey="value" fill="#12a150" radius={[0, 3, 3, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+        <div className="panel panel-pad">
+          <div className="section-title" style={{ marginTop: 0 }}>{t('requestedByCategory')}</div>
+          <div style={{ height: 220, direction: 'ltr' }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={byCategoryOpen} layout="vertical" margin={{ left: 8, right: 16 }}>
+                <XAxis type="number" tick={axis} allowDecimals={false} /><YAxis type="category" dataKey="name" tick={axis} width={130} interval={0} />
+                <Tooltip contentStyle={tip} formatter={(v) => money(v)} />
+                <Bar dataKey="value" fill="#e0384c" radius={[0, 3, 3, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>

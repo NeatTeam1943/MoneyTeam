@@ -36,7 +36,10 @@ jobs:
           DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
           mkdir -p backup
-          pg_dump "$DB_URL" \
+          # Call the pgdg-17 binary directly — the runner's default `pg_dump`
+          # on PATH resolves to Ubuntu's older bundled client (16.x), which
+          # refuses to dump a newer Postgres server (Supabase runs 17.x).
+          /usr/lib/postgresql/17/bin/pg_dump "$DB_URL" \
             --no-owner --no-privileges \
             --schema=public \
             -f "backup/moneyteam_$(date +%F).sql"

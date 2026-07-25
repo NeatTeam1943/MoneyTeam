@@ -1,8 +1,10 @@
-import { Suspense, lazy } from 'react'
+import { Suspense, lazy, useState } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
+import { authLandingType } from './lib/supabase'
 import Layout from './components/Layout'
 import Login from './pages/Login'
+import AcceptInvite from './pages/AcceptInvite'
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Transactions = lazy(() => import('./pages/Transactions'))
@@ -12,9 +14,16 @@ const Settings = lazy(() => import('./pages/Settings'))
 
 export default function App() {
   const { session, member, loading } = useAuth()
+  // 'invite'/'recovery' link landed here with a fresh session but no password
+  // set yet — captured once at page load, before Supabase strips the URL.
+  const [needsPassword, setNeedsPassword] = useState(authLandingType === 'invite' || authLandingType === 'recovery')
 
   if (loading) {
     return <div className="center-screen"><div className="mono" style={{ color: 'var(--text-faint)' }}>…</div></div>
+  }
+
+  if (session && needsPassword) {
+    return <AcceptInvite onDone={() => setNeedsPassword(false)} />
   }
 
   // Signed in but no members row = provisioned auth user with no access yet.

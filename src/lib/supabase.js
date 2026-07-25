@@ -7,6 +7,18 @@ if (!url || !anon) {
   console.error('Missing VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY.')
 }
 
+// Captured once, eagerly, at module load — BEFORE detectSessionInUrl below
+// consumes and strips the URL's auth params. This is how the app knows "this
+// visit is someone accepting an invite (or resetting a password) and needs
+// to set a password before going any further", rather than a normal login.
+export const authLandingType = (() => {
+  try {
+    const search = new URLSearchParams(window.location.search)
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+    return search.get('type') || hash.get('type') || null   // 'invite' | 'recovery' | 'signup' | null
+  } catch { return null }
+})()
+
 // Pass-through lock disables navigator.locks, which could deadlock the first
 // getSession() when a stale lock was left in storage (app stuck on "…").
 const passthroughLock = async (_name, _acquireTimeout, fn) => fn()
@@ -36,7 +48,14 @@ export const supabase = createClient(url || 'http://localhost', anon || 'anon', 
   auth: {
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: false,
+    // PKCE puts the login code in the URL's query string (?code=...) instead
+    // of the hash (#access_token=...). That matters here specifically
+    // because this app uses HashRouter for navigation (#/dashboard etc) —
+    // with the old implicit flow, the router and Supabase's invite link were
+    // both trying to use the same '#', and the router won, swallowing the
+    // invite token before Supabase ever saw it.
+    flowType: 'pkce',
+    detectSessionInUrl: true,
     lock: passthroughLock,
   },
   global: { fetch: authFetch },

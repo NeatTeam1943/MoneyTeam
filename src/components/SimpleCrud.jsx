@@ -209,6 +209,7 @@ function CsvImportButton({ onDone }) {
   const { t } = useI18n()
   const toast = useToast()
   const fileRef = useRef(null)
+  const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
 
   function parseCsv(text) {
@@ -223,6 +224,16 @@ function CsvImportButton({ onDone }) {
     return rows
   }
 
+  function downloadTemplate() {
+    const csv = 'email,name\nstudent1@example.com,First Last\nstudent2@example.com,First Last\n'
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = 'members_template.csv'
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
+
   async function handleFile(e) {
     const file = e.target.files?.[0]
     e.target.value = ''   // allow re-selecting the same file later
@@ -231,6 +242,7 @@ function CsvImportButton({ onDone }) {
     const people = parseCsv(text)
     if (!people.length) { toast.error(t('noValidRowsInCsv')); return }
 
+    setOpen(false)
     setBusy(true)
     let ok = 0, failed = 0
     for (const p of people) {
@@ -248,7 +260,26 @@ function CsvImportButton({ onDone }) {
   return (
     <>
       <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={handleFile} style={{ display: 'none' }} />
-      <button className="btn" onClick={() => fileRef.current?.click()} disabled={busy}>{busy ? '…' : t('importCsv')}</button>
+      <button className="btn" onClick={() => setOpen(true)} disabled={busy}>{busy ? '…' : t('importCsv')}</button>
+      {open && (
+        <Modal
+          title={t('importCsv')}
+          onClose={() => setOpen(false)}
+          footer={<>
+            <button className="btn btn-ghost" onClick={() => setOpen(false)}>{t('cancel')}</button>
+            <button className="btn" onClick={downloadTemplate}>{t('downloadTemplate')}</button>
+            <button className="btn btn-primary" onClick={() => fileRef.current?.click()}>{t('chooseFile')}</button>
+          </>}
+        >
+          <p style={{ marginTop: 0 }}>{t('csvFormatExplain')}</p>
+          <div className="panel panel-pad mono" style={{ background: 'var(--panel-2)', fontSize: 13 }}>
+            email,name<br />
+            student1@example.com,First Last<br />
+            student2@example.com,First Last
+          </div>
+          <p style={{ color: 'var(--text-faint)', fontSize: 13 }}>{t('csvFormatNote')}</p>
+        </Modal>
+      )}
     </>
   )
 }

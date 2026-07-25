@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase, withTimeout } from '../lib/supabase'
 import { useI18n } from '../lib/i18n'
 import { useAuth } from '../context/AuthContext'
@@ -20,6 +20,8 @@ export default function SimpleCrud({ table, fields, orderBy, manualId, canWrite,
   const [open, setOpen] = useState(false)
   const [inviteOpen, setInviteOpen] = useState(false)
   const [loading, setLoading] = useState(true)
+  const isMembers = table === 'members'
+  const [selected, setSelected] = useState(() => new Set())
 
   const [dynOpts, setDynOpts] = useState({})
   async function loadDyn() {
@@ -74,12 +76,39 @@ export default function SimpleCrud({ table, fields, orderBy, manualId, canWrite,
     toast.success(t('deleted')); load(); notifyChanged()
   }
 
+  // --- bulk selection (members table only) ---------------------------------
+  const toggleOne = (id) => setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const toggleAll = () => setSelected((s) => (s.size === rows.length ? new Set() : new Set(rows.map((r) => r.id))))
+
+  async function bulkSetViewer() {
+    if (!selected.size) return
+    if (!confirm(t('confirmBulkViewer').replace('{n}', selected.size))) return
+    const { error } = await supabase.from('members').update({ role: 'viewer' }).in('id', [...selected])
+    if (error) { toast.error(error.message); return }
+    toast.success(t('saved')); setSelected(new Set()); load()
+  }
+  async function bulkDelete() {
+    if (!selected.size) return
+    if (!confirm(t('confirmBulkDelete').replace('{n}', selected.size))) return
+    const { error } = await supabase.from('members').delete().in('id', [...selected])
+    if (error) { toast.error(error.message); return }
+    toast.success(t('deleted')); setSelected(new Set()); load()
+  }
+
   return (
     <div>
       {hint && <p style={{ color: 'var(--text-faint)', fontSize: 13, marginTop: 0 }}>{hint}</p>}
       {canWrite && (
         <div className="toolbar">
+          {isMembers && selected.size > 0 && (
+            <>
+              <span className="badge">{t('selectedCount').replace('{n}', selected.size)}</span>
+              <button className="btn btn-sm" onClick={bulkSetViewer}>{t('setToViewer')}</button>
+              <button className="btn btn-sm btn-danger" onClick={bulkDelete}>{t('deleteSelected')}</button>
+            </>
+          )}
           <div className="spacer" />
+          {invite && <CsvImportButton onDone={() => { load(); notifyChanged() }} />}
           {invite && <button className="btn" onClick={() => setInviteOpen(true)}>{t('inviteMember')}</button>}
           <button className="btn btn-primary" onClick={() => { setEditing(null); setOpen(true) }}>+ {t('add')}</button>
         </div>
@@ -88,6 +117,9 @@ export default function SimpleCrud({ table, fields, orderBy, manualId, canWrite,
         <table className="data">
           <thead>
             <tr>
+              {isMembers && canWrite && (
+                <th><input type="checkbox" checked={rows.length > 0 && selected.size === rows.length} onChange={toggleAll} style={{ width: 'auto' }} /></th>
+              )}
               {fields.map((f) => <th key={f.key}>{f.label}</th>)}
               {canWrite && <th>{t('actions')}</th>}
             </tr>
@@ -95,6 +127,9 @@ export default function SimpleCrud({ table, fields, orderBy, manualId, canWrite,
           <tbody>
             {rows.map((r) => (
               <tr key={r.id}>
+                {isMembers && canWrite && (
+                  <td><input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleOne(r.id)} style={{ width: 'auto' }} /></td>
+                )}
                 {fields.map((f) => <td key={f.key}>{renderCell(r[f.key], f, dynOpts)}</td>)}
                 {canWrite && (
                   <td>
@@ -130,7 +165,7 @@ function InviteForm({ onClose, onSent, onError }) {
   const { t } = useI18n()
   const [email, setEmail] = useState('')
   const [fullName, setFullName] = useState('')
-  const [role, setRole] = useState('viewer')
+  const [role, setRole] = useState('student')
   const [busy, setBusy] = useState(false)
 
   async function send() {
@@ -158,12 +193,63 @@ function InviteForm({ onClose, onSent, onError }) {
       <div className="field">
         <label>{t('role')}</label>
         <select value={role} onChange={(e) => setRole(e.target.value)}>
+          <option value="student">{t('student')}</option>
           <option value="viewer">{t('viewer')}</option>
-          <option value="editor">{t('editor')}</option>
           <option value="mentor">{t('mentor')}</option>
         </select>
       </div>
     </Modal>
+  )
+}
+
+// Parses a two-column CSV (email, name — a header row is auto-detected and
+// skipped), invites everyone found as a student, and reports per-row results
+// instead of failing the whole batch if one address is bad.
+function CsvImportButton({ onDone }) {
+  const { t } = useI18n()
+  const toast = useToast()
+  const fileRef = useRef(null)
+  const [busy, setBusy] = useState(false)
+
+  function parseCsv(text) {
+    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+    const rows = []
+    for (const line of lines) {
+      const [rawEmail, ...rest] = line.split(',').map((c) => c.trim().replace(/^"|"$/g, ''))
+      if (!rawEmail) continue
+      if (!rawEmail.includes('@')) continue   // skips a header row like "email,name"
+      rows.push({ email: rawEmail, full_name: rest.join(', ') || '' })
+    }
+    return rows
+  }
+
+  async function handleFile(e) {
+    const file = e.target.files?.[0]
+    e.target.value = ''   // allow re-selecting the same file later
+    if (!file) return
+    const text = await file.text()
+    const people = parseCsv(text)
+    if (!people.length) { toast.error(t('noValidRowsInCsv')); return }
+
+    setBusy(true)
+    let ok = 0, failed = 0
+    for (const p of people) {
+      const { data, error } = await supabase.functions.invoke('invite_member', {
+        body: { email: p.email, full_name: p.full_name, role: 'student' },
+      })
+      if (error || data?.error) failed++
+      else ok++
+    }
+    setBusy(false)
+    toast[failed ? 'error' : 'success'](t('csvImportResult').replace('{ok}', ok).replace('{failed}', failed))
+    onDone()
+  }
+
+  return (
+    <>
+      <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={handleFile} style={{ display: 'none' }} />
+      <button className="btn" onClick={() => fileRef.current?.click()} disabled={busy}>{busy ? '…' : t('importCsv')}</button>
+    </>
   )
 }
 

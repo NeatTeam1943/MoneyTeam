@@ -89,6 +89,7 @@ export default function Transactions() {
     label: b.category_id ? (lk.categoryTree.find((c) => c.id === b.category_id)?.path || lk.categoryName[b.category_id] || '—') : t('overall'),
   })), [budgets, lk.categoryTree, lk.categoryName, t])
   const budgetLabel = useMemo(() => Object.fromEntries(budgetOptions.map((b) => [b.id, b.label])), [budgetOptions])
+  const budgetCat = useMemo(() => Object.fromEntries(budgets.map((b) => [b.id, b.category_id])), [budgets])
 
   const enriched = useMemo(() => rows.map((r) => ({
     ...r,

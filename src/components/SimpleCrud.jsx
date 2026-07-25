@@ -31,14 +31,22 @@ export default function SimpleCrud({ table, fields, orderBy, manualId, canWrite,
   }
 
   async function load() {
-    const q = supabase.from(table).select('*')
-    if (orderBy) q.order(orderBy)
-    const { data, error } = await q
-    if (!error) setRows(data || [])
-    setLoading(false)
-    await loadDyn()   // refresh option lists too, so a new row shows up as a parent option without a page refresh
+    try {
+      const q = supabase.from(table).select('*')
+      if (orderBy) q.order(orderBy)
+      const { data, error } = await q
+      if (!error) setRows(data || [])
+      // refresh option lists too, so a new row shows up as a parent option
+      // without needing a page refresh
+      await loadDyn()
+    } finally {
+      setLoading(false)
+    }
   }
-  useEffect(() => { if (session?.user?.id) load() }, [table, session])
+  useEffect(() => {
+    if (session?.user?.id) load()
+    else setLoading(false)
+  }, [table, session])
 
   function notifyChanged() { if (onChanged) onChanged() }
 

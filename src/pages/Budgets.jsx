@@ -27,19 +27,25 @@ export default function Budgets() {
   const [open, setOpen] = useState(false)
 
   async function load() {
-    if (!activeId) return
+    if (!activeId) { setLoading(false); return }
     setLoading(true)
-    const [b, tl, sh] = await Promise.all([
-      supabase.from('budgets').select('*').eq('season_id', activeId),
-      supabase.from('transaction_lines').select('amount,budget_id,transactions!inner(season_id)').eq('transactions.season_id', activeId),
-      supabase.from('shopping_items').select('est_price,quantity,category_id,status').eq('season_id', activeId),
-    ])
-    if (!b.error) setBudgets(b.data || [])
-    if (!tl.error) setExpenses(tl.data || []) // expense LINES (each charges a budget)
-    if (!sh.error) setShopping(sh.data || [])
-    setLoading(false)
+    try {
+      const [b, tl, sh] = await Promise.all([
+        supabase.from('budgets').select('*').eq('season_id', activeId),
+        supabase.from('transaction_lines').select('amount,budget_id,transactions!inner(season_id)').eq('transactions.season_id', activeId),
+        supabase.from('shopping_items').select('est_price,quantity,category_id,status').eq('season_id', activeId),
+      ])
+      if (!b.error) setBudgets(b.data || [])
+      if (!tl.error) setExpenses(tl.data || []) // expense LINES (each charges a budget)
+      if (!sh.error) setShopping(sh.data || [])
+    } finally {
+      setLoading(false)
+    }
   }
-  useEffect(() => { if (session?.user?.id) load() }, [activeId, session])
+  useEffect(() => {
+    if (session?.user?.id) load()
+    else setLoading(false)   // not signed in yet — don't sit on a spinner forever
+  }, [activeId, session])
 
   // For each budget: spend + requested roll up over the category subtree.
   const budgetCat = useMemo(() => Object.fromEntries(budgets.map((b) => [b.id, b.category_id])), [budgets])

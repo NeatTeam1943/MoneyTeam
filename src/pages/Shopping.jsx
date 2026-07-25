@@ -35,19 +35,25 @@ export default function Shopping() {
   const rankOf = useMemo(() => Object.fromEntries(lk.levels.map((l) => [l.id, l.rank])), [lk.levels])
 
   async function load() {
-    if (!activeId) return
+    if (!activeId) { setLoading(false); return }
     setLoading(true)
-    const [items, bg, tl] = await Promise.all([
-      supabase.from('shopping_items').select('*').eq('season_id', activeId),
-      supabase.from('budgets').select('*').eq('season_id', activeId),
-      supabase.from('transaction_lines').select('amount,budget_id,transactions!inner(season_id)').eq('transactions.season_id', activeId),
-    ])
-    if (!items.error) setRows(items.data || [])
-    if (!bg.error) setBudgets(bg.data || [])
-    if (!tl.error) setLines(tl.data || [])
-    setLoading(false)
+    try {
+      const [items, bg, tl] = await Promise.all([
+        supabase.from('shopping_items').select('*').eq('season_id', activeId),
+        supabase.from('budgets').select('*').eq('season_id', activeId),
+        supabase.from('transaction_lines').select('amount,budget_id,transactions!inner(season_id)').eq('transactions.season_id', activeId),
+      ])
+      if (!items.error) setRows(items.data || [])
+      if (!bg.error) setBudgets(bg.data || [])
+      if (!tl.error) setLines(tl.data || [])
+    } finally {
+      setLoading(false)
+    }
   }
-  useEffect(() => { if (session?.user?.id) load() }, [activeId, session])
+  useEffect(() => {
+    if (session?.user?.id) load()
+    else setLoading(false)   // not signed in yet — don't sit on a spinner forever
+  }, [activeId, session])
 
   const enriched = useMemo(() => rows.map((r) => ({
     ...r,

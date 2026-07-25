@@ -6,7 +6,7 @@ import { useI18n } from '../lib/i18n'
 import { useToast } from '../lib/toast'
 import { useLookups } from '../lib/useLookups'
 import { money, fmtDate, typePill, TX_TYPES } from '../lib/format'
-import { exportTransactions } from '../lib/export'
+import { exportTransactions, downloadAllReceipts } from '../lib/export'
 import TransactionForm from '../components/TransactionForm'
 
 export default function Transactions() {
@@ -19,6 +19,7 @@ export default function Transactions() {
   const [budgets, setBudgets] = useState([])
   const [txLines, setTxLines] = useState({})
   const [loading, setLoading] = useState(true)
+  const [zipping, setZipping] = useState(null)   // null | 'n/total'
   const [balances, setBalances] = useState([])
   const [editing, setEditing] = useState(null)
   const [showForm, setShowForm] = useState(false)
@@ -33,26 +34,32 @@ export default function Transactions() {
   const [sort, setSort] = useState({ col: 'date', dir: 'desc' })
 
   async function load() {
-    if (!activeId) return
+    if (!activeId) { setLoading(false); return }
     setLoading(true)
-    // All four queries in parallel — previously they ran one after another.
-    const [tx, bal, bg, tl] = await Promise.all([
-      supabase.from('transactions').select('*').eq('season_id', activeId),
-      supabase.from('account_balances').select('*'),
-      supabase.from('budgets').select('*').eq('season_id', activeId),
-      supabase.from('transaction_lines').select('transaction_id,budget_id,amount,transactions!inner(season_id)').eq('transactions.season_id', activeId),
-    ])
-    if (!tx.error) setRows(tx.data || [])      // keep prior data if a query fails
-    if (!bal.error) setBalances(bal.data || [])
-    if (!bg.error) setBudgets(bg.data || [])
-    if (!tl.error) {
-      const map = {}
-      for (const l of tl.data || []) (map[l.transaction_id] = map[l.transaction_id] || []).push(l)
-      setTxLines(map)
+    try {
+      // All four queries in parallel — previously they ran one after another.
+      const [tx, bal, bg, tl] = await Promise.all([
+        supabase.from('transactions').select('*').eq('season_id', activeId),
+        supabase.from('account_balances').select('*'),
+        supabase.from('budgets').select('*').eq('season_id', activeId),
+        supabase.from('transaction_lines').select('transaction_id,budget_id,amount,transactions!inner(season_id)').eq('transactions.season_id', activeId),
+      ])
+      if (!tx.error) setRows(tx.data || [])      // keep prior data if a query fails
+      if (!bal.error) setBalances(bal.data || [])
+      if (!bg.error) setBudgets(bg.data || [])
+      if (!tl.error) {
+        const map = {}
+        for (const l of tl.data || []) (map[l.transaction_id] = map[l.transaction_id] || []).push(l)
+        setTxLines(map)
+      }
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
-  useEffect(() => { if (session?.user?.id) load() }, [activeId, session])
+  useEffect(() => {
+    if (session?.user?.id) load()
+    else setLoading(false)   // not signed in yet — don't sit on a spinner forever
+  }, [activeId, session])
 
   const budgetOptions = useMemo(() => budgets.map((b) => ({
     id: b.id,
@@ -109,6 +116,20 @@ export default function Transactions() {
     toast.success(t('deleted')); load()
   }
 
+  async function doReceiptsZip() {
+    const withR = filtered.filter((r) => r.receipt_url && r.receipt_no)
+    if (!withR.length) { toast.error(t('noReceipts')); return }
+    setZipping(`0/${withR.length}`)
+    try {
+      const res = await downloadAllReceipts(filtered, supabase, { seasonName: active?.name },
+        (done, total) => setZipping(`${done}/${total}`))
+      if (res.failed) toast.error(`${res.count - res.failed}/${res.count}`)
+      else toast.success(t('saved'))
+    } catch (e) {
+      toast.error(e.message || String(e))
+    } finally { setZipping(null) }
+  }
+
   function doExport() {
     exportTransactions(filtered, {
       seasonName: active?.name,
@@ -145,6 +166,9 @@ export default function Transactions() {
         <input type="date" value={to} onChange={(e) => setTo(e.target.value)} title={t('date')} />
         <div className="spacer" />
         <button className="btn" onClick={doExport}>{t('export')}</button>
+        <button className="btn" onClick={doReceiptsZip} disabled={!!zipping}>
+          {zipping ? `${t('downloadReceipts')} ${zipping}` : t('downloadReceipts')}
+        </button>
         {canTransact && <button className="btn btn-primary" onClick={() => { setEditing(null); setShowForm(true) }}>+ {t('add')}</button>}
       </div>
 

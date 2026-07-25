@@ -55,6 +55,15 @@ jobs:
           node scripts/backup-receipts.mjs
           ls -lh backup/ || true
 
+      - name: Export Excel (transactions + shopping, every season)
+        env:
+          SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          npm install --no-save @supabase/supabase-js@2.45.4 xlsx@0.18.5
+          node scripts/backup-excel.mjs
+          ls -lh backup/excel/ || true
+
       # Artifacts are private to people with access to this repo. Do NOT commit
       # dumps into the repository itself — it is public and these files contain
       # every transaction, sponsor and amount.

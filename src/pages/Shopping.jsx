@@ -78,27 +78,73 @@ export default function Shopping() {
     priorityName: lk.levelName[r.priority_level_id] || '',
   })), [rows, lk.categoryName, lk.levelName])
 
-  const filtered = useMemo(() => enriched
-    .filter((r) => (!fStatus || r.status === fStatus) && (!fPriority || r.priority_level_id === fPriority))
-    .sort((a, b) => (rankOf[a.priority_level_id] ?? 999) - (rankOf[b.priority_level_id] ?? 999)),
-    [enriched, fStatus, fPriority, rankOf])
+  const [sort, setSort] = useState({ col: 'priority', dir: 'asc' })
+  function toggleSort(col) {
+    setSort((s) => (s.col === col ? { col, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'asc' }))
+  }
+  const th = (col, label) => (
+    <th onClick={() => toggleSort(col)} style={{ cursor: 'pointer' }}>{label}{sort.col === col ? (sort.dir === 'asc' ? ' ↑' : ' ↓') : ''}</th>
+  )
+
+  const filtered = useMemo(() => {
+    const out = enriched.filter((r) => (!fStatus || r.status === fStatus) && (!fPriority || r.priority_level_id === fPriority))
+    const { col, dir } = sort
+    const mul = dir === 'asc' ? 1 : -1
+    const val = (r) => {
+      if (col === 'priority') return rankOf[r.priority_level_id] ?? 999
+      if (col === 'est_price') return Number(r.est_price) || 0
+      if (col === 'quantity') return Number(r.quantity) || 0
+      if (col === 'category') return r.categoryName || ''
+      if (col === 'name') return r.name || ''
+      if (col === 'vendor') return r.vendor || ''
+      if (col === 'status') return t(r.status) || ''
+      return r[col] ?? ''
+    }
+    out.sort((a, b) => {
+      const av = val(a), bv = val(b)
+      if (av < bv) return -1 * mul
+      if (av > bv) return 1 * mul
+      return 0
+    })
+    return out
+  }, [enriched, fStatus, fPriority, rankOf, sort, t])
 
   // "requested" = still wanted (not received / cancelled)
   const open = useMemo(() => enriched.filter((r) => r.status === 'pending_approval' || r.status === 'approved'), [enriched])
 
+  // Same direct/parent toggle as the Dashboard's "by category" chart —
+  // 'direct' never rolls a child (e.g. אוכל) into its parent (תחרויות);
+  // 'parent' sums every category into its top-level ancestor.
+  const [categoryGrouping, setCategoryGrouping] = useState('direct')
+  const topAncestorName = useMemo(() => {
+    const byId = Object.fromEntries(lk.categories.map((c) => [c.id, c]))
+    const cache = {}
+    return (id) => {
+      if (!id) return null
+      if (cache[id]) return cache[id]
+      let cur = byId[id]
+      if (!cur) return lk.categoryName[id] || null
+      while (cur.parent_id && byId[cur.parent_id]) cur = byId[cur.parent_id]
+      cache[id] = cur.name
+      return cur.name
+    }
+  }, [lk.categories, lk.categoryName])
+  const groupKey = (categoryId, fallbackName) =>
+    (categoryGrouping === 'parent' ? topAncestorName(categoryId) : fallbackName) || t('overall')
+
   // ALL-TIME: every item ever requested, by category (every status included)
   const byCategoryAll = useMemo(() => {
     const m = {}
-    for (const r of enriched) { const k = r.categoryName || '—'; m[k] = (m[k] || 0) + (Number(r.est_price) || 0) * (r.quantity || 1) }
+    for (const r of enriched) { const k = groupKey(r.category_id, r.categoryName); m[k] = (m[k] || 0) + (Number(r.est_price) || 0) * (r.quantity || 1) }
     return Object.entries(m).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
-  }, [enriched])
+  }, [enriched, categoryGrouping, topAncestorName])
 
   // STILL OUTSTANDING: only items not yet paid for — pending_approval / approved
   const byCategoryOpen = useMemo(() => {
     const m = {}
-    for (const r of open) { const k = r.categoryName || '—'; m[k] = (m[k] || 0) + (Number(r.est_price) || 0) * (r.quantity || 1) }
+    for (const r of open) { const k = groupKey(r.category_id, r.categoryName); m[k] = (m[k] || 0) + (Number(r.est_price) || 0) * (r.quantity || 1) }
     return Object.entries(m).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
-  }, [open])
+  }, [open, categoryGrouping, topAncestorName])
 
   const byStatus = useMemo(() => {
     const m = {}
@@ -110,9 +156,13 @@ export default function Shopping() {
   const budgetCat = useMemo(() => Object.fromEntries(budgets.map((b) => [b.id, b.category_id])), [budgets])
   const actualByCategory = useMemo(() => {
     const m = {}
-    for (const l of lines) { const k = lk.categoryName[budgetCat[l.budget_id]] || t('overall'); m[k] = (m[k] || 0) + Number(l.amount) }
+    for (const l of lines) {
+      const catId = budgetCat[l.budget_id]
+      const k = groupKey(catId, lk.categoryName[catId])
+      m[k] = (m[k] || 0) + Number(l.amount)
+    }
     return Object.entries(m).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
-  }, [lines, budgetCat, lk.categoryName, t])
+  }, [lines, budgetCat, lk.categoryName, t, categoryGrouping, topAncestorName])
 
   async function del(id) {
     if (!confirm(t('confirmDelete'))) return
@@ -165,6 +215,12 @@ export default function Shopping() {
 
   return (
     <div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <div className="tabs" style={{ marginBottom: 0 }}>
+          <button className={'tab' + (categoryGrouping === 'direct' ? ' active' : '')} onClick={() => setCategoryGrouping('direct')}>{t('directOnly')}</button>
+          <button className={'tab' + (categoryGrouping === 'parent' ? ' active' : '')} onClick={() => setCategoryGrouping('parent')}>{t('groupByParent')}</button>
+        </div>
+      </div>
       <div className="charts">
         <div className="panel panel-pad">
           <div className="section-title" style={{ marginTop: 0 }}>{t('requestedAllByCategory')}</div>
@@ -240,8 +296,8 @@ export default function Shopping() {
             <thead>
               <tr>
                 {canTransact && <th></th>}
-                <th>{t('priority')}</th><th>{t('name')}</th><th>{t('sku')}</th><th>{t('category')}</th>
-                <th>{t('vendor')}</th><th>{t('estPrice')}</th><th>{t('quantity')}</th><th>{t('status')}</th>
+                {th('priority', t('priority'))}{th('name', t('name'))}<th>{t('sku')}</th>{th('category', t('category'))}
+                {th('vendor', t('vendor'))}{th('est_price', t('estPrice'))}{th('quantity', t('quantity'))}{th('status', t('status'))}
                 <th>{t('url')}</th>{(canAddShopping || canTransact) && <th>{t('actions')}</th>}
               </tr>
             </thead>

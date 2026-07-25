@@ -7,6 +7,7 @@ import { useToast } from '../lib/toast'
 import { useLookups } from '../lib/useLookups'
 import { money, fmtDate, typePill, TX_TYPES } from '../lib/format'
 import { exportTransactions, downloadAllReceipts } from '../lib/export'
+import { catLabel } from '../context/LookupsContext'
 import TransactionForm from '../components/TransactionForm'
 
 export default function Transactions() {
@@ -103,11 +104,32 @@ export default function Transactions() {
     })(),
   })), [rows, lk.accountName, lk.categoryName, lk.sourceName, budgetLabel, txLines, t])
 
+  // Which category id(s) a transaction actually touches — an expense's
+  // category lives on its lines' budgets (a split purchase can touch
+  // several), not on the transaction row itself; in_kind is the one type
+  // that does carry category_id directly.
+  const txCategoryIds = useMemo(() => {
+    const m = {}
+    for (const r of rows) {
+      const ids = new Set()
+      if (r.category_id) ids.add(r.category_id)
+      for (const l of (txLines[r.id] || [])) if (budgetCat[l.budget_id]) ids.add(budgetCat[l.budget_id])
+      m[r.id] = ids
+    }
+    return m
+  }, [rows, txLines, budgetCat])
+
   const filtered = useMemo(() => {
     let out = enriched.filter((r) => {
       if (fType && r.type !== fType) return false
       if (fAccount && r.account_id !== fAccount && r.to_account_id !== fAccount) return false
-      if (fCategory && r.category_id !== fCategory) return false
+      if (fCategory) {
+        // Picking a parent category (e.g. תחרויות) also matches its children
+        // (אוכל/הסעות/מדים); picking a leaf matches only that leaf.
+        const wanted = lk.descendantsOf(fCategory)
+        const touched = txCategoryIds[r.id] || new Set()
+        if (![...touched].some((cid) => wanted.has(cid))) return false
+      }
       if (fSource && r.income_source_id !== fSource) return false
       if (from && r.date < from) return false
       if (to && r.date > to) return false
@@ -126,7 +148,7 @@ export default function Transactions() {
       return 0
     })
     return out
-  }, [enriched, fType, fAccount, fCategory, fSource, from, to, q, sort])
+  }, [enriched, fType, fAccount, fCategory, fSource, from, to, q, sort, txCategoryIds, lk])
 
   function toggleSort(col) {
     setSort((s) => (s.col === col ? { col, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'asc' }))
@@ -178,7 +200,7 @@ export default function Transactions() {
         </select>
         <select value={fCategory} onChange={(e) => setFCategory(e.target.value)}>
           <option value="">{t('category')}: {t('all')}</option>
-          {lk.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          {lk.categoryTree.map((c) => <option key={c.id} value={c.id}>{catLabel(c)}</option>)}
         </select>
         <select value={fSource} onChange={(e) => setFSource(e.target.value)}>
           <option value="">{t('source')}: {t('all')}</option>

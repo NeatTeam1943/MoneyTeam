@@ -42,3 +42,14 @@ export const supabase = createClient(url || 'http://localhost', anon || 'anon', 
   global: { fetch: authFetch },
 })
 _client = supabase
+
+// Races a query (or Promise.all of queries) against a timeout, so a request
+// that Chrome silently drops (common after a backgrounded tab wakes up) can
+// never leave a page stuck showing "loading" forever — it falls through and
+// the caller can keep its last-known-good data instead of hanging.
+export function withTimeout(promise, ms = 15000) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms)),
+  ])
+}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, withTimeout } from '../lib/supabase'
 import { useI18n } from '../lib/i18n'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../lib/toast'
@@ -13,6 +13,7 @@ import Modal from './Modal'
 export default function SimpleCrud({ table, fields, orderBy, manualId, canWrite, hint, invite, onChanged }) {
   const { t } = useI18n()
   const { session } = useAuth()
+  const uid = session?.user?.id
   const toast = useToast()
   const [rows, setRows] = useState([])
   const [editing, setEditing] = useState(null)
@@ -34,11 +35,13 @@ export default function SimpleCrud({ table, fields, orderBy, manualId, canWrite,
     try {
       const q = supabase.from(table).select('*')
       if (orderBy) q.order(orderBy)
-      const { data, error } = await q
+      const { data, error } = await withTimeout(q)
       if (!error) setRows(data || [])
       // refresh option lists too, so a new row shows up as a parent option
       // without needing a page refresh
-      await loadDyn()
+      await withTimeout(loadDyn())
+    } catch (e) {
+      if (e.message === 'timeout') toast.error(t('loadTimedOut'))
     } finally {
       setLoading(false)
     }
@@ -46,7 +49,7 @@ export default function SimpleCrud({ table, fields, orderBy, manualId, canWrite,
   useEffect(() => {
     if (session?.user?.id) load()
     else setLoading(false)
-  }, [table, session])
+  }, [table, uid])
 
   function notifyChanged() { if (onChanged) onChanged() }
 

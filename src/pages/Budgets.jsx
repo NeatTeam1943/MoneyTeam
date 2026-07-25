@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts'
-import { supabase } from '../lib/supabase'
+import { supabase, withTimeout } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useSeason } from '../context/SeasonContext'
 import { useI18n } from '../lib/i18n'
@@ -16,6 +16,7 @@ const tip = { background: '#fff', border: '1px solid #c6cde0', borderRadius: 8, 
 export default function Budgets() {
   const { t } = useI18n()
   const { canBudget, session } = useAuth()
+  const uid = session?.user?.id
   const { activeId } = useSeason()
   const toast = useToast()
   const lk = useLookups()
@@ -30,14 +31,16 @@ export default function Budgets() {
     if (!activeId) { setLoading(false); return }
     setLoading(true)
     try {
-      const [b, tl, sh] = await Promise.all([
+      const [b, tl, sh] = await withTimeout(Promise.all([
         supabase.from('budgets').select('*').eq('season_id', activeId),
         supabase.from('transaction_lines').select('amount,budget_id,transactions!inner(season_id)').eq('transactions.season_id', activeId),
         supabase.from('shopping_items').select('est_price,quantity,category_id,status').eq('season_id', activeId),
-      ])
+      ]))
       if (!b.error) setBudgets(b.data || [])
       if (!tl.error) setExpenses(tl.data || []) // expense LINES (each charges a budget)
       if (!sh.error) setShopping(sh.data || [])
+    } catch (e) {
+      if (e.message === 'timeout') toast.error(t('loadTimedOut'))
     } finally {
       setLoading(false)
     }
@@ -45,7 +48,7 @@ export default function Budgets() {
   useEffect(() => {
     if (session?.user?.id) load()
     else setLoading(false)   // not signed in yet — don't sit on a spinner forever
-  }, [activeId, session])
+  }, [activeId, uid])
 
   // For each budget: spend + requested roll up over the category subtree.
   const budgetCat = useMemo(() => Object.fromEntries(budgets.map((b) => [b.id, b.category_id])), [budgets])

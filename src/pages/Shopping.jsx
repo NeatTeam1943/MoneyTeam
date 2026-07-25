@@ -18,6 +18,7 @@ const tip = { background: '#fff', border: '1px solid #c6cde0', borderRadius: 8, 
 export default function Shopping() {
   const { t } = useI18n()
   const { canAddShopping, canChangeStatus, canTransact, session } = useAuth()
+  const uid = session?.user?.id
   const { activeId, active } = useSeason()
   const toast = useToast()
   const lk = useLookups()
@@ -38,14 +39,16 @@ export default function Shopping() {
     if (!activeId) { setLoading(false); return }
     setLoading(true)
     try {
-      const [items, bg, tl] = await Promise.all([
+      const [items, bg, tl] = await withTimeout(Promise.all([
         supabase.from('shopping_items').select('*').eq('season_id', activeId),
         supabase.from('budgets').select('*').eq('season_id', activeId),
         supabase.from('transaction_lines').select('amount,budget_id,transactions!inner(season_id)').eq('transactions.season_id', activeId),
-      ])
+      ]))
       if (!items.error) setRows(items.data || [])
       if (!bg.error) setBudgets(bg.data || [])
       if (!tl.error) setLines(tl.data || [])
+    } catch (e) {
+      if (e.message === 'timeout') toast.error(t('loadTimedOut'))
     } finally {
       setLoading(false)
     }
@@ -53,7 +56,7 @@ export default function Shopping() {
   useEffect(() => {
     if (session?.user?.id) load()
     else setLoading(false)   // not signed in yet — don't sit on a spinner forever
-  }, [activeId, session])
+  }, [activeId, uid])
 
   const enriched = useMemo(() => rows.map((r) => ({
     ...r,

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, withTimeout } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useSeason } from '../context/SeasonContext'
 import { useI18n } from '../lib/i18n'
@@ -12,6 +12,7 @@ import TransactionForm from '../components/TransactionForm'
 export default function Transactions() {
   const { t } = useI18n()
   const { canTransact, session } = useAuth()
+  const uid = session?.user?.id
   const { activeId, active } = useSeason()
   const toast = useToast()
   const lk = useLookups()
@@ -38,12 +39,12 @@ export default function Transactions() {
     setLoading(true)
     try {
       // All four queries in parallel — previously they ran one after another.
-      const [tx, bal, bg, tl] = await Promise.all([
+      const [tx, bal, bg, tl] = await withTimeout(Promise.all([
         supabase.from('transactions').select('*').eq('season_id', activeId),
         supabase.from('account_balances').select('*'),
         supabase.from('budgets').select('*').eq('season_id', activeId),
         supabase.from('transaction_lines').select('transaction_id,budget_id,amount,transactions!inner(season_id)').eq('transactions.season_id', activeId),
-      ])
+      ]))
       if (!tx.error) setRows(tx.data || [])      // keep prior data if a query fails
       if (!bal.error) setBalances(bal.data || [])
       if (!bg.error) setBudgets(bg.data || [])
@@ -52,6 +53,8 @@ export default function Transactions() {
         for (const l of tl.data || []) (map[l.transaction_id] = map[l.transaction_id] || []).push(l)
         setTxLines(map)
       }
+    } catch (e) {
+      if (e.message === 'timeout') toast.error(t('loadTimedOut'))
     } finally {
       setLoading(false)
     }
@@ -59,7 +62,7 @@ export default function Transactions() {
   useEffect(() => {
     if (session?.user?.id) load()
     else setLoading(false)   // not signed in yet — don't sit on a spinner forever
-  }, [activeId, session])
+  }, [activeId, uid])
 
   const budgetOptions = useMemo(() => budgets.map((b) => ({
     id: b.id,

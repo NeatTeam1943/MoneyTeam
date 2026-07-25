@@ -17,6 +17,7 @@ export default function Dashboard() {
   const { t } = useI18n()
   const { activeId, active } = useSeason()
   const { session } = useAuth()
+  const uid = session?.user?.id
   const { categoryName, sourceName } = useLookups()
   const [rows, setRows] = useState([])
   const [balances, setBalances] = useState([])
@@ -40,7 +41,7 @@ export default function Dashboard() {
         const n = (data || []).filter((s) => !s.transaction_id && s.status !== 'cancelled' && s.status !== 'received').length
         setWaiting(n)
       })
-  }, [activeId, session])
+  }, [activeId, uid])
 
   const totals = useMemo(() => {
     let income = 0, expense = 0, inkind = 0

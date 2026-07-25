@@ -29,7 +29,7 @@ export default function Budgets() {
 
   async function load() {
     if (!activeId) { setLoading(false); return }
-    setLoading(true)
+    if (budgets.length === 0) setLoading(true)   // only spinner when nothing is showing yet
     try {
       const [b, tl, sh] = await withTimeout(Promise.all([
         supabase.from('budgets').select('*').eq('season_id', activeId),
@@ -48,6 +48,20 @@ export default function Budgets() {
   useEffect(() => {
     if (session?.user?.id) load()
     else setLoading(false)   // not signed in yet — don't sit on a spinner forever
+  }, [activeId, uid])
+
+  // Re-fetch on returning to the tab so a request Chrome dropped in the
+  // background gets a fresh attempt — silent, since load() above won't show
+  // a spinner while data is already on screen.
+  useEffect(() => {
+    const onFocus = () => { if (activeId && session?.user?.id) load() }
+    const onVis = () => { if (!document.hidden) onFocus() }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVis)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVis)
+    }
   }, [activeId, uid])
 
   // For each budget: spend + requested roll up over the category subtree.

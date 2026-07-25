@@ -51,6 +51,21 @@ export default function SimpleCrud({ table, fields, orderBy, manualId, canWrite,
     else setLoading(false)
   }, [table, uid])
 
+  // Re-fetch on returning to the tab so a request Chrome dropped in the
+  // background gets a fresh attempt. Already silent: load() only shows a
+  // spinner on the very first call (loading starts true, then never gets
+  // set back to true), so a returning-user refresh never blanks the table.
+  useEffect(() => {
+    const onFocus = () => { if (session?.user?.id) load() }
+    const onVis = () => { if (!document.hidden) onFocus() }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVis)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVis)
+    }
+  }, [table, uid])
+
   function notifyChanged() { if (onChanged) onChanged() }
 
   async function del(row) {

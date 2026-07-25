@@ -25,7 +25,7 @@ export default function Dashboard() {
   const [waiting, setWaiting] = useState(0)
   const [lines, setLines] = useState([])
 
-  useEffect(() => {
+  function loadDashboard() {
     if (!activeId || !session?.user?.id) return
     supabase.from('transactions').select('*').eq('season_id', activeId)
       .then(({ data, error }) => { if (!error) setRows(data || []) })
@@ -41,6 +41,22 @@ export default function Dashboard() {
         const n = (data || []).filter((s) => !s.transaction_id && s.status !== 'cancelled' && s.status !== 'received').length
         setWaiting(n)
       })
+  }
+
+  useEffect(() => { loadDashboard() }, [activeId, uid])
+
+  // Re-fetch on returning to the tab so a request Chrome dropped in the
+  // background gets a fresh attempt. Already silent — these are individual
+  // .then() updates, not a loading flag, so nothing blanks the dashboard.
+  useEffect(() => {
+    const onFocus = () => loadDashboard()
+    const onVis = () => { if (!document.hidden) onFocus() }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVis)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVis)
+    }
   }, [activeId, uid])
 
   const totals = useMemo(() => {

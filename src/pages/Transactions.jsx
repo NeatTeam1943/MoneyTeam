@@ -36,7 +36,10 @@ export default function Transactions() {
 
   async function load() {
     if (!activeId) { setLoading(false); return }
-    setLoading(true)
+    // Only show the loading state if we have nothing on screen yet. A refetch
+    // triggered by returning to the tab should refresh quietly in the
+    // background — it must never blank out data that's already displayed.
+    if (rows.length === 0) setLoading(true)
     try {
       // All four queries in parallel — previously they ran one after another.
       const [tx, bal, bg, tl] = await withTimeout(Promise.all([
@@ -62,6 +65,22 @@ export default function Transactions() {
   useEffect(() => {
     if (session?.user?.id) load()
     else setLoading(false)   // not signed in yet — don't sit on a spinner forever
+  }, [activeId, uid])
+
+  // Re-fetch when the tab regains focus. This is what actually recovers from
+  // a request that Chrome silently dropped while the tab was backgrounded —
+  // without it, nothing would ever retry and the page could sit forever on
+  // whatever it last managed to show. Safe because load() above only shows a
+  // spinner when there's no data yet; a returning-user refresh is silent.
+  useEffect(() => {
+    const onFocus = () => { if (activeId && session?.user?.id) load() }
+    const onVis = () => { if (!document.hidden) onFocus() }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVis)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVis)
+    }
   }, [activeId, uid])
 
   const budgetOptions = useMemo(() => budgets.map((b) => ({

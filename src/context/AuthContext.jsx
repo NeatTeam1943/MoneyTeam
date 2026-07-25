@@ -1,5 +1,5 @@
-import { createContext, useContext, useEffect, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
+import { supabase, withTimeout } from '../lib/supabase'
 
 const AuthContext = createContext(null)
 
@@ -7,11 +7,27 @@ export function AuthProvider({ children }) {
   const [session, setSession] = useState(null)
   const [member, setMember] = useState(null)
   const [loading, setLoading] = useState(true)
+  const loadedUid = useRef(null)   // which user's member row is currently loaded
 
-  async function loadMember(userId) {
-    if (!userId) { setMember(null); return }
-    const { data } = await supabase.from('members').select('*').eq('id', userId).maybeSingle()
-    setMember(data || null)
+  // Only re-queries when the signed-in user actually changes. A token refresh
+  // (e.g. triggered by the focus/visibility listener below) re-fires
+  // onAuthStateChange with the SAME user, and previously this re-ran the
+  // members query every time; if that single request had any hiccup, the
+  // empty result wiped `member` to null, which made the whole app render
+  // "No permission" instead of the page the person was already on.
+  async function loadMember(userId, { force = false } = {}) {
+    if (!userId) { loadedUid.current = null; setMember(null); return }
+    if (!force && loadedUid.current === userId) return   // nothing actually changed
+    try {
+      const { data, error } = await withTimeout(
+        supabase.from('members').select('*').eq('id', userId).maybeSingle()
+      )
+      if (error) return              // transient failure — keep whatever member we already have
+      loadedUid.current = userId
+      setMember(data || null)
+    } catch {
+      // timed out or network hiccup — keep the existing member rather than blanking the app
+    }
   }
 
   useEffect(() => {
@@ -23,7 +39,7 @@ export function AuthProvider({ children }) {
     supabase.auth.getSession()
       .then(async ({ data }) => {
         setSession(data.session)
-        await loadMember(data.session?.user?.id)
+        await loadMember(data.session?.user?.id, { force: true })
       })
       .catch((e) => console.error('getSession failed', e))
       .finally(() => { done = true; clearTimeout(failsafe); setLoading(false) })
@@ -33,8 +49,10 @@ export function AuthProvider({ children }) {
       await loadMember(s?.user?.id)
     })
     // When returning to the tab (e.g. after the laptop slept), proactively refresh
-    // the token so the next query doesn't fire with an expired one.
-    const onFocus = () => { supabase.auth.getSession() }
+    // the token so the next query doesn't fire with an expired one. This can
+    // trigger onAuthStateChange above with the same user — loadMember's guard
+    // means that no longer re-queries or risks wiping member state.
+    const onFocus = () => { supabase.auth.getSession().catch(() => {}) }
     const onVis = () => { if (!document.hidden) onFocus() }
     window.addEventListener('focus', onFocus)
     document.addEventListener('visibilitychange', onVis)

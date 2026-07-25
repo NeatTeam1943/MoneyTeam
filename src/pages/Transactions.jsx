@@ -43,7 +43,7 @@ export default function Transactions() {
     try {
       // All four queries in parallel — previously they ran one after another.
       const [tx, bal, bg, tl] = await withTimeout(Promise.all([
-        supabase.from('transactions').select('*').eq('season_id', activeId),
+        supabase.from('transactions_view').select('*').eq('season_id', activeId),
         supabase.from('account_balances').select('*'),
         supabase.from('budgets').select('*').eq('season_id', activeId),
         supabase.from('transaction_lines').select('transaction_id,budget_id,amount,transactions!inner(season_id)').eq('transactions.season_id', activeId),
@@ -204,6 +204,7 @@ export default function Transactions() {
               <th>{t('account')}</th>
               <th>{t('category')} / {t('source')}</th>
               <th>{t('description')}</th>
+              <th>{t('payer')}</th>
               <th>{t('receipt')}</th>
               {canTransact && <th>{t('actions')}</th>}
             </tr>
@@ -217,6 +218,7 @@ export default function Transactions() {
                 <td>{r.type === 'transfer' ? `${r.accountName} → ${r.toAccountName}` : r.accountName || '—'}</td>
                 <td>{r.type === 'expense' ? (r.budgetName || '—') : (r.categoryName || r.sourceName || '—')}</td>
                 <td style={{ color: 'var(--text-dim)' }}>{r.description || r.vendor || '—'}</td>
+                <td style={{ color: 'var(--text-dim)' }}>{r.payer_display || '—'}</td>
                 <td><Receipt path={r.receipt_url} number={r.receipt_number} /></td>
                 {canTransact && (
                   <td>

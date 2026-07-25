@@ -17,6 +17,7 @@ export function exportTransactions(rows, meta = {}) {
     Vendor: r.vendor || '',
     Description: r.description || '',
     Budget: r.budgetName || '',
+    Payer: r.payer_display || '',
     'Receipt ID': r.receipt_no || '',   // matches the filename inside the receipts ZIP
     Notes: r.notes || '',
   }))

@@ -22,6 +22,7 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
     category_id: seed.category_id || '',
     vendor: seed.vendor || '',
     description: seed.description || '',
+    payer_name: seed.payer_name || '',
     receipt_url: seed.receipt_url || '',
     notes: seed.notes || '',
   }))
@@ -81,6 +82,7 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
         p_description: f.description || null,
         p_receipt_url: receipt_url,
         p_lines,
+        p_payer_name: f.payer_name || null,
       })
       if (error) throw error
       onSaved({ id: data })
@@ -106,6 +108,7 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
         income_source_id: showSource ? f.income_source_id : null,
         category_id: f.type === 'in_kind' ? (f.category_id || null) : null,
         description: f.description || null,
+        payer_name: f.payer_name || null,
         notes: f.notes || null,
       }
       const res = editing
@@ -228,6 +231,7 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
       )}
 
       <div className="field"><label>{t('description')}</label><input value={f.description} onChange={set('description')} /></div>
+      <div className="field"><label>{t('payer')}</label><input value={f.payer_name} onChange={set('payer_name')} placeholder={t('payerHint')} /></div>
       {!isExpense && <div className="field"><label>{t('notes')}</label><textarea rows="2" value={f.notes} onChange={set('notes')} /></div>}
 
       {err && <div className="err">{err}</div>}

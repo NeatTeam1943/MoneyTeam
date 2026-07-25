@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useI18n } from '../lib/i18n'
 import { money } from '../lib/format'
 import Modal from './Modal'
+import CurrencyAmountInput from './CurrencyAmountInput'
 
 const OTHER_TYPES = ['income', 'transfer', 'in_kind'] // expense handled separately (with lines)
 
@@ -11,6 +12,7 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
   const seed = editing || initial || {}
   const knownVendor = seed.vendor && vendors.some((v) => v.name === seed.vendor)
   const [vendorMode, setVendorMode] = useState(() => (seed.vendor && !knownVendor ? 'other' : 'list'))
+  const [fx, setFx] = useState(() => seed.fx_currency ? { currency: seed.fx_currency, amount: seed.fx_amount, rate: seed.fx_rate } : null)
 
   const [f, setF] = useState(() => ({
     type: seed.type || 'expense',
@@ -110,6 +112,9 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
         description: f.description || null,
         payer_name: f.payer_name || null,
         notes: f.notes || null,
+        fx_currency: fx?.currency || null,
+        fx_amount: fx?.amount ? Number(fx.amount) : null,
+        fx_rate: fx?.rate ? Number(fx.rate) : null,
       }
       const res = editing
         ? await supabase.from('transactions').update(payload).eq('id', editing.id).select().single()
@@ -143,7 +148,9 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
       <div className="grid-2">
         <div className="field"><label>{t('date')}</label><input type="date" value={f.date} onChange={set('date')} /></div>
         {f.type !== 'in_kind' && !isExpense && (
-          <div className="field"><label>{t('amount')} (₪)</label><input type="number" step="0.01" min="0" value={f.amount} onChange={set('amount')} /></div>
+          <div className="field"><label>{t('amount')} (₪)</label>
+            <CurrencyAmountInput value={f.amount} onChange={(v) => setF({ ...f, amount: v })} fx={fx} onFxChange={setFx} placeholder={t('amount')} />
+          </div>
         )}
       </div>
 
@@ -215,7 +222,10 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
                   <option value="">{t('none')}</option>
                   {budgets.map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}
                 </select>
-                <input type="number" step="0.01" min="0" placeholder="₪" value={l.amount} onChange={(e) => setLine(i, 'amount', e.target.value)} style={{ width: 90 }} />
+                <div style={{ width: 140 }}>
+                  <CurrencyAmountInput value={l.amount} onChange={(v) => setLine(i, 'amount', v)}
+                    fx={l.fx} onFxChange={(fxVal) => setLine(i, 'fx', fxVal)} placeholder="₪" />
+                </div>
                 <input placeholder={t('description')} value={l.description} onChange={(e) => setLine(i, 'description', e.target.value)} style={{ flex: 1 }} />
                 <button className="btn btn-ghost btn-sm btn-danger" onClick={() => removeLine(i)}>✕</button>
               </div>
@@ -239,10 +249,11 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
   )
 }
 
-const emptyLine = () => ({ budget_id: '', amount: '', description: '', shopping_item_id: '' })
+const emptyLine = () => ({ budget_id: '', amount: '', description: '', shopping_item_id: '', fx: null })
 const normLine = (l) => ({
   budget_id: l.budget_id || '',
   amount: l.amount ?? '',
   description: l.description || '',
   shopping_item_id: l.shopping_item_id || '',
+  fx: null,   // fx breadcrumb is entry-time only, never persisted per line
 })

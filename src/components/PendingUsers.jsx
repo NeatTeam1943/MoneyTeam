@@ -18,7 +18,7 @@ export default function PendingUsers() {
   useEffect(() => { load() }, [])
 
   async function grant(row) {
-    const { error } = await supabase.from('members').insert({ id: row.id, email: row.email, role })
+    const { error } = await supabase.from('members').insert({ id: row.id, email: row.email, full_name: row.full_name, role })
     if (error) { toast.error(error.message); return }
     toast.success(t('saved'))
     load()
@@ -40,7 +40,7 @@ export default function PendingUsers() {
       </div>
       {rows.map((r) => (
         <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderTop: '1px solid var(--line)' }}>
-          <span>{r.email}</span>
+          <span>{r.full_name || r.email}{r.full_name && <span style={{ color: 'var(--text-faint)', fontSize: 12 }}> · {r.email}</span>}</span>
           <button className="btn btn-sm btn-primary" onClick={() => grant(r)}>{t('grantAccess')}</button>
         </div>
       ))}

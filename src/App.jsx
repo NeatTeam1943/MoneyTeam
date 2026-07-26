@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import Layout from './components/Layout'
 import Login from './pages/Login'
+import NameSetup from './pages/NameSetup'
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Transactions = lazy(() => import('./pages/Transactions'))
@@ -15,6 +16,15 @@ export default function App() {
 
   if (loading) {
     return <div className="center-screen"><div className="mono" style={{ color: 'var(--text-faint)' }}>…</div></div>
+  }
+
+  // First-time sign-in with no members row yet: confirm a name once, before
+  // showing "waiting for a mentor". supabase.auth.updateUser() inside
+  // NameSetup fires a USER_UPDATED event that AuthContext already listens
+  // for, so session.user.user_metadata refreshes on its own — no extra
+  // plumbing needed here.
+  if (session && !member && !session.user?.user_metadata?.name_confirmed) {
+    return <NameSetup user={session.user} onDone={() => {}} />
   }
 
   // Signed in but no members row = provisioned auth user with no access yet.

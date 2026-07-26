@@ -41,6 +41,19 @@ export default function Login() {
               {busy ? '…' : t('signIn')}
             </button>
           </form>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '18px 0', color: 'var(--text-faint)', fontSize: 12 }}>
+            <div style={{ flex: 1, height: 1, background: 'var(--line)' }} />
+            {t('or')}
+            <div style={{ flex: 1, height: 1, background: 'var(--line)' }} />
+          </div>
+          <button
+            type="button"
+            className="btn"
+            style={{ width: '100%', justifyContent: 'center' }}
+            onClick={() => supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin + window.location.pathname } })}
+          >
+            {t('signInWithGoogle')}
+          </button>
         </div>
       </div>
     </div>

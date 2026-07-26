@@ -4,6 +4,7 @@ import { useSeason } from '../context/SeasonContext'
 import { useI18n } from '../lib/i18n'
 import SimpleCrud from '../components/SimpleCrud'
 import TemplatesManager from '../components/TemplatesManager'
+import PendingUsers from '../components/PendingUsers'
 
 export default function Settings() {
   const { t } = useI18n()
@@ -98,6 +99,7 @@ export default function Settings() {
         ))}
       </div>
       {!isMentor && <p style={{ color: 'var(--text-faint)', fontSize: 13 }}>{t('contactMentor')}</p>}
+      {tab === 'members' && isMentor && <PendingUsers />}
       {tab === 'templates' ? <TemplatesManager canWrite={isMentor} /> : <SimpleCrud key={tab} {...cfg} />}
     </div>
   )

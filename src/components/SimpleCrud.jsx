@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase, withTimeout } from '../lib/supabase'
 import { useI18n } from '../lib/i18n'
 import { useAuth } from '../context/AuthContext'
@@ -108,7 +108,6 @@ export default function SimpleCrud({ table, fields, orderBy, manualId, canWrite,
             </>
           )}
           <div className="spacer" />
-          {invite && <CsvImportButton onDone={() => { load(); notifyChanged() }} />}
           {invite && <button className="btn" onClick={() => setInviteOpen(true)}>{t('inviteMember')}</button>}
           <button className="btn btn-primary" onClick={() => { setEditing(null); setOpen(true) }}>+ {t('add')}</button>
         </div>
@@ -199,88 +198,6 @@ function InviteForm({ onClose, onSent, onError }) {
         </select>
       </div>
     </Modal>
-  )
-}
-
-// Parses a two-column CSV (email, name — a header row is auto-detected and
-// skipped), invites everyone found as a student, and reports per-row results
-// instead of failing the whole batch if one address is bad.
-function CsvImportButton({ onDone }) {
-  const { t } = useI18n()
-  const toast = useToast()
-  const fileRef = useRef(null)
-  const [open, setOpen] = useState(false)
-  const [busy, setBusy] = useState(false)
-
-  function parseCsv(text) {
-    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
-    const rows = []
-    for (const line of lines) {
-      const [rawEmail, ...rest] = line.split(',').map((c) => c.trim().replace(/^"|"$/g, ''))
-      if (!rawEmail) continue
-      if (!rawEmail.includes('@')) continue   // skips a header row like "email,name"
-      rows.push({ email: rawEmail, full_name: rest.join(', ') || '' })
-    }
-    return rows
-  }
-
-  function downloadTemplate() {
-    const csv = 'email,name\nstudent1@example.com,First Last\nstudent2@example.com,First Last\n'
-    const blob = new Blob([csv], { type: 'text/csv' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = 'members_template.csv'
-    a.click()
-    URL.revokeObjectURL(a.href)
-  }
-
-  async function handleFile(e) {
-    const file = e.target.files?.[0]
-    e.target.value = ''   // allow re-selecting the same file later
-    if (!file) return
-    const text = await file.text()
-    const people = parseCsv(text)
-    if (!people.length) { toast.error(t('noValidRowsInCsv')); return }
-
-    setOpen(false)
-    setBusy(true)
-    let ok = 0, failed = 0
-    for (const p of people) {
-      const { data, error } = await supabase.functions.invoke('invite_member', {
-        body: { email: p.email, full_name: p.full_name, role: 'student' },
-      })
-      if (error || data?.error) failed++
-      else ok++
-    }
-    setBusy(false)
-    toast[failed ? 'error' : 'success'](t('csvImportResult').replace('{ok}', ok).replace('{failed}', failed))
-    onDone()
-  }
-
-  return (
-    <>
-      <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={handleFile} style={{ display: 'none' }} />
-      <button className="btn" onClick={() => setOpen(true)} disabled={busy}>{busy ? '…' : t('importCsv')}</button>
-      {open && (
-        <Modal
-          title={t('importCsv')}
-          onClose={() => setOpen(false)}
-          footer={<>
-            <button className="btn btn-ghost" onClick={() => setOpen(false)}>{t('cancel')}</button>
-            <button className="btn" onClick={downloadTemplate}>{t('downloadTemplate')}</button>
-            <button className="btn btn-primary" onClick={() => fileRef.current?.click()}>{t('chooseFile')}</button>
-          </>}
-        >
-          <p style={{ marginTop: 0 }}>{t('csvFormatExplain')}</p>
-          <div className="panel panel-pad mono" style={{ background: 'var(--panel-2)', fontSize: 13 }}>
-            email,name<br />
-            student1@example.com,First Last<br />
-            student2@example.com,First Last
-          </div>
-          <p style={{ color: 'var(--text-faint)', fontSize: 13 }}>{t('csvFormatNote')}</p>
-        </Modal>
-      )}
-    </>
   )
 }
 

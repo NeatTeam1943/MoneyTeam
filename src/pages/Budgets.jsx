@@ -75,9 +75,13 @@ export default function Budgets() {
   const rows = useMemo(() => budgets.map((b) => {
     const isOverall = !b.category_id
     const set = isOverall ? null : lk.descendantsOf(b.category_id)
+    // 'direct' for Overall means "not tracked under any specific budget at
+    // all" (budget_id/category_id is null) — otherwise the toggle would do
+    // nothing for this row, since "everything" and "everything rolled up"
+    // are the same total. 'parent' keeps Overall as the full season total.
     const inScope = categoryGrouping === 'direct'
-      ? (cid) => isOverall || cid === b.category_id
-      : (cid) => isOverall || (cid && set.has(cid))
+      ? (isOverall ? (cid) => cid == null : (cid) => cid === b.category_id)
+      : (isOverall ? () => true : (cid) => cid && set.has(cid))
     // an expense's "category" is the category of the budget it was drawn from
     const spent = expenses.reduce((s, l) => s + (inScope(budgetCat[l.budget_id]) ? Number(l.amount) : 0), 0)
     const requested = shopping.reduce((s, r) => {

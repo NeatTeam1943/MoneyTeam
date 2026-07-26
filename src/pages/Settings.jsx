@@ -78,7 +78,7 @@ export default function Settings() {
       ],
     },
     members: {
-      table: 'members', orderBy: 'email', canWrite: isMentor, manualId: true, invite: true, hint: t('newMemberHint'),
+      table: 'members', orderBy: 'email', canWrite: isMentor, manualId: true, hint: t('newMemberHint'),
       fields: [
         { key: 'email', label: t('email'), type: 'text', required: true },
         { key: 'full_name', label: t('fullName'), type: 'text' },

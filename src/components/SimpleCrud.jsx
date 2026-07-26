@@ -10,7 +10,7 @@ import Modal from './Modal'
 // manualId: true => the PK is entered by hand (used for members, id = auth uid)
 // onChanged: optional callback fired after any add/edit/delete — lets a parent
 // (e.g. the global SeasonContext) know this table changed and refetch itself.
-export default function SimpleCrud({ table, fields, orderBy, manualId, canWrite, hint, invite, onChanged }) {
+export default function SimpleCrud({ table, fields, orderBy, manualId, canWrite, hint, onChanged }) {
   const { t } = useI18n()
   const { session } = useAuth()
   const uid = session?.user?.id
@@ -18,7 +18,6 @@ export default function SimpleCrud({ table, fields, orderBy, manualId, canWrite,
   const [rows, setRows] = useState([])
   const [editing, setEditing] = useState(null)
   const [open, setOpen] = useState(false)
-  const [inviteOpen, setInviteOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const isMembers = table === 'members'
   const [selected, setSelected] = useState(() => new Set())
@@ -108,7 +107,6 @@ export default function SimpleCrud({ table, fields, orderBy, manualId, canWrite,
             </>
           )}
           <div className="spacer" />
-          {invite && <button className="btn" onClick={() => setInviteOpen(true)}>{t('inviteMember')}</button>}
           <button className="btn btn-primary" onClick={() => { setEditing(null); setOpen(true) }}>+ {t('add')}</button>
         </div>
       )}
@@ -149,55 +147,7 @@ export default function SimpleCrud({ table, fields, orderBy, manualId, canWrite,
           onSaved={() => { setOpen(false); toast.success(t('saved')); load(); notifyChanged() }}
         />
       )}
-      {inviteOpen && (
-        <InviteForm
-          onClose={() => setInviteOpen(false)}
-          onSent={() => { setInviteOpen(false); toast.success(t('inviteSent')); load() }}
-          onError={(m) => toast.error(m)}
-        />
-      )}
     </div>
-  )
-}
-
-function InviteForm({ onClose, onSent, onError }) {
-  const { t } = useI18n()
-  const [email, setEmail] = useState('')
-  const [fullName, setFullName] = useState('')
-  const [role, setRole] = useState('student')
-  const [busy, setBusy] = useState(false)
-
-  async function send() {
-    if (!email) return
-    setBusy(true)
-    const { data, error } = await supabase.functions.invoke('invite_member', {
-      body: { email, full_name: fullName, role },
-    })
-    setBusy(false)
-    if (error || data?.error) { onError((data && data.error) || error.message); return }
-    onSent()
-  }
-
-  return (
-    <Modal
-      title={t('inviteMember')}
-      onClose={onClose}
-      footer={<>
-        <button className="btn btn-ghost" onClick={onClose}>{t('cancel')}</button>
-        <button className="btn btn-primary" onClick={send} disabled={busy}>{busy ? '…' : t('sendInvite')}</button>
-      </>}
-    >
-      <div className="field"><label>{t('email')}</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
-      <div className="field"><label>{t('fullName')}</label><input value={fullName} onChange={(e) => setFullName(e.target.value)} /></div>
-      <div className="field">
-        <label>{t('role')}</label>
-        <select value={role} onChange={(e) => setRole(e.target.value)}>
-          <option value="student">{t('student')}</option>
-          <option value="viewer">{t('viewer')}</option>
-          <option value="mentor">{t('mentor')}</option>
-        </select>
-      </div>
-    </Modal>
   )
 }
 

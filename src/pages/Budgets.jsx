@@ -66,11 +66,18 @@ export default function Budgets() {
 
   // For each budget: spend + requested roll up over the category subtree.
   const budgetCat = useMemo(() => Object.fromEntries(budgets.map((b) => [b.id, b.category_id])), [budgets])
+  // Same toggle as the Dashboard/Shopping charts — 'parent' (default) sums a
+  // parent budget's children into it (e.g. תחרויות shows אוכל+הסעות+מדים
+  // combined); 'direct' shows only spend charged to that exact budget's own
+  // category, with nothing rolled up from children.
+  const [categoryGrouping, setCategoryGrouping] = useState('parent')
 
   const rows = useMemo(() => budgets.map((b) => {
     const isOverall = !b.category_id
     const set = isOverall ? null : lk.descendantsOf(b.category_id)
-    const inScope = (cid) => isOverall || (cid && set.has(cid))
+    const inScope = categoryGrouping === 'direct'
+      ? (cid) => isOverall || cid === b.category_id
+      : (cid) => isOverall || (cid && set.has(cid))
     // an expense's "category" is the category of the budget it was drawn from
     const spent = expenses.reduce((s, l) => s + (inScope(budgetCat[l.budget_id]) ? Number(l.amount) : 0), 0)
     const requested = shopping.reduce((s, r) => {
@@ -92,7 +99,7 @@ export default function Budgets() {
       })(),
     }
   }).sort((a, b) => (a.category_id ? 1 : 0) - (b.category_id ? 1 : 0) || b.amount - a.amount),
-    [budgets, expenses, shopping, budgetCat, lk, t])
+    [budgets, expenses, shopping, budgetCat, lk, t, categoryGrouping])
 
   const chartData = useMemo(() => rows.map((r) => ({ name: r.label, [t('spent')]: r.spent, [t('requested')]: r.requested })), [rows, t])
 
@@ -108,7 +115,13 @@ export default function Budgets() {
     <div>
       {rows.length > 0 && (
         <div className="panel panel-pad" style={{ marginBottom: 18 }}>
-          <div className="section-title" style={{ marginTop: 0 }}>{t('budgetVsRequested')}</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+            <div className="section-title" style={{ marginTop: 0, marginBottom: 0 }}>{t('budgetVsRequested')}</div>
+            <div className="tabs" style={{ marginBottom: 0 }}>
+              <button className={'tab' + (categoryGrouping === 'direct' ? ' active' : '')} onClick={() => setCategoryGrouping('direct')}>{t('directOnly')}</button>
+              <button className={'tab' + (categoryGrouping === 'parent' ? ' active' : '')} onClick={() => setCategoryGrouping('parent')}>{t('groupByParent')}</button>
+            </div>
+          </div>
           <div style={{ height: 260, direction: 'ltr' }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} margin={{ left: 8, right: 8 }}>

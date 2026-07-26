@@ -18,7 +18,7 @@ export default function Dashboard() {
   const { activeId, active } = useSeason()
   const { session } = useAuth()
   const uid = session?.user?.id
-  const { categoryName, sourceName } = useLookups()
+  const { categoryName, sourceName, categories } = useLookups()
   const [rows, setRows] = useState([])
   const [balances, setBalances] = useState([])
   const [budgets, setBudgets] = useState([])
@@ -90,7 +90,29 @@ export default function Dashboard() {
   }, [rows])
 
   const budgetCat = useMemo(() => Object.fromEntries(budgets.map((b) => [b.id, b.category_id])), [budgets])
-  const byCategory = useMemo(() => group(lines, (l) => categoryName[budgetCat[l.budget_id]] || t('overall')), [lines, categoryName, budgetCat, t])
+
+  // Same direct/parent toggle as the Shopping and Budgets pages — 'direct'
+  // never rolls a child (e.g. אוכל) into its parent (תחרויות); 'parent' sums
+  // every category into its top-level ancestor.
+  const [categoryGrouping, setCategoryGrouping] = useState('direct')
+  const topAncestorName = useMemo(() => {
+    const byId = Object.fromEntries(categories.map((c) => [c.id, c]))
+    const cache = {}
+    return (id) => {
+      if (!id) return null
+      if (cache[id]) return cache[id]
+      let cur = byId[id]
+      if (!cur) return categoryName[id] || null
+      while (cur.parent_id && byId[cur.parent_id]) cur = byId[cur.parent_id]
+      cache[id] = cur.name
+      return cur.name
+    }
+  }, [categories, categoryName])
+
+  const byCategory = useMemo(() => group(lines, (l) => {
+    const catId = budgetCat[l.budget_id]
+    return (categoryGrouping === 'parent' ? topAncestorName(catId) : categoryName[catId]) || t('overall')
+  }), [lines, categoryName, budgetCat, t, categoryGrouping, topAncestorName])
   const bySource = useMemo(() => group(rows.filter((r) => r.type === 'income'), (r) => sourceName[r.income_source_id] || '—'), [rows, sourceName])
 
   return (
@@ -126,7 +148,13 @@ export default function Dashboard() {
 
       <div className="charts" style={{ marginTop: 16 }}>
         <div className="panel panel-pad">
-          <div className="section-title" style={{ marginTop: 0 }}>{t('byCategory')}</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+            <div className="section-title" style={{ marginTop: 0, marginBottom: 0 }}>{t('byCategory')}</div>
+            <div className="tabs" style={{ marginBottom: 0 }}>
+              <button className={'tab' + (categoryGrouping === 'direct' ? ' active' : '')} onClick={() => setCategoryGrouping('direct')}>{t('directOnly')}</button>
+              <button className={'tab' + (categoryGrouping === 'parent' ? ' active' : '')} onClick={() => setCategoryGrouping('parent')}>{t('groupByParent')}</button>
+            </div>
+          </div>
           <div style={{ height: 260, direction: 'ltr' }}>
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>

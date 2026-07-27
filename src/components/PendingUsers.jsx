@@ -40,7 +40,14 @@ export default function PendingUsers() {
       </div>
       {rows.map((r) => (
         <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderTop: '1px solid var(--line)' }}>
-          <span>{r.full_name || r.email}{r.full_name && <span style={{ color: 'var(--text-faint)', fontSize: 12 }}> · {r.email}</span>}</span>
+          {/* A row with neither name nor email used to render as an empty
+              label next to a live Grant access button — visible in the count,
+              invisible in the list. Never leave the row unlabelled. */}
+          <span>
+            {r.full_name || r.email || <span style={{ color: 'var(--text-faint)' }}>{t('unnamedUser')}</span>}
+            {r.full_name && r.email && <span style={{ color: 'var(--text-faint)', fontSize: 12 }}> · {r.email}</span>}
+            {!r.full_name && !r.email && <span className="mono" style={{ color: 'var(--text-faint)', fontSize: 11 }}> · {String(r.id).slice(0, 8)}</span>}
+          </span>
           <button className="btn btn-sm btn-primary" onClick={() => grant(r)}>{t('grantAccess')}</button>
         </div>
       ))}

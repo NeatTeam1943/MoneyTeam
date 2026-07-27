@@ -41,25 +41,40 @@ export default function ReceiptPreview({ path, number, onClose }) {
     let alive = true
     setUrl(null); setErr(''); setDiag(null); setFailed(false)
 
-    supabase.storage.from('receipts').createSignedUrl(clean, 600).then(async ({ data, error }) => {
+    supabase.storage.from('receipts').createSignedUrl(clean, 600).then(({ data, error }) => {
       if (!alive) return
       if (error || !data?.signedUrl) { setErr(error?.message || t('receiptLoadFailed')); return }
       setUrl(data.signedUrl)
-      // A signed URL is issued even for an object that does not exist, so the
-      // URL succeeding proves nothing. Ask storage what is actually there —
-      // that turns a silent broken-image icon into a status code we can act on.
-      try {
-        const res = await fetch(data.signedUrl, { method: 'GET', headers: { Range: 'bytes=0-0' } })
-        if (!alive) return
-        const info = { status: res.status, type: res.headers.get('content-type') || '' }
-        setDiag(info)
-        if (!res.ok) setFailed(true)
-      } catch {
-        if (alive) { setDiag({ status: 0, type: '' }); setFailed(true) }
-      }
     })
     return () => { alive = false }
   }, [clean, t])
+
+  // Diagnose ONLY after something actually fails to render.
+  //
+  // The previous version probed the URL up front with a `Range: bytes=0-0`
+  // GET to check the object existed. That request is what broke the preview:
+  // the browser cached the 1-byte 206 response, then <img> requested the same
+  // URL, was served the truncated entry from cache, and could not decode it.
+  // A perfectly good PNG reported "status 206, type image/png" and still
+  // showed as broken — the check caused the failure it was reporting.
+  //
+  // Now nothing touches the URL before the element does, and the probe runs
+  // only on error, with HEAD (no body, nothing to cache) and no-store.
+  async function diagnose() {
+    setFailed(true)
+    if (!url || diag) return
+    try {
+      let res = await fetch(url, { method: 'HEAD', cache: 'no-store' })
+      // Some storage backends reject HEAD on a signed URL; fall back to a
+      // plain GET, still without a Range header.
+      if (res.status === 405 || res.status === 501) {
+        res = await fetch(url, { method: 'GET', cache: 'no-store' })
+      }
+      setDiag({ status: res.status, type: res.headers.get('content-type') || '' })
+    } catch {
+      setDiag({ status: 0, type: '' })
+    }
+  }
 
   const filename = clean.split('/').pop()
   const kind = kindOf(clean, diag?.type)
@@ -67,7 +82,14 @@ export default function ReceiptPreview({ path, number, onClose }) {
   const diagnostics = (
     <div className="empty-cta" style={{ textAlign: 'start' }}>
       <p style={{ fontWeight: 700, marginTop: 0 }}>{t('previewFailed')}</p>
-      <p style={{ color: 'var(--text-dim)', fontSize: 13 }}>{t('previewDiag')}</p>
+      {/* A 2xx means storage handed the file over perfectly well and the
+          browser still would not display it — saying "did not load from
+          storage" there would send you hunting in the wrong place. */}
+      <p style={{ color: 'var(--text-dim)', fontSize: 13 }}>
+        {!diag ? t('previewChecking')
+          : diag.status >= 200 && diag.status < 300 ? t('previewOkButUndisplayable')
+            : t('previewDiag')}
+      </p>
       <ul className="mono" style={{ fontSize: 12, color: 'var(--text-faint)', paddingInlineStart: 18, lineHeight: 1.9 }}>
         <li>{t('previewStatus')}: {diag ? (diag.status || 'network error') : '—'}</li>
         <li>{t('previewType')}: {diag?.type || '—'}</li>
@@ -98,7 +120,7 @@ export default function ReceiptPreview({ path, number, onClose }) {
           // alt is empty on purpose: a failed <img> would otherwise print the
           // filename next to a broken icon, which is what made this look like
           // the preview had rendered something.
-          <img src={url} alt="" onError={() => setFailed(true)}
+          <img src={url} alt="" onError={diagnose}
             style={{ maxWidth: '100%', maxHeight: '68vh', display: 'block', margin: '0 auto', borderRadius: 8 }} />
         )}
         {url && !failed && kind === 'pdf' && (

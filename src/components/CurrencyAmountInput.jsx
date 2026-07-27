@@ -1,7 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { useI18n } from '../lib/i18n'
 
-const CURRENCIES = ['USD', 'EUR', 'GBP']
+// ILS is deliberately part of the list. Getting back to shekels used to be a
+// bare "₪" button at the end of a five-control row that wrapped onto its own
+// line in narrow columns, sitting right next to "↻" — two unlabelled glyphs,
+// no way to tell which was which. The way back now lives exactly where you go
+// to change currency in the first place.
+const ILS = 'ILS'
+const CURRENCIES = [ILS, 'USD', 'EUR', 'GBP']
+const CURRENCY_LABEL = { ILS: '₪ ILS', USD: '$ USD', EUR: '€ EUR', GBP: '£ GBP' }
 
 // Suggests a conversion rate to ILS from Frankfurter (ECB daily reference
 // rates — free, no key, CORS-enabled). If the fetch fails for any reason
@@ -78,7 +85,19 @@ export default function CurrencyAmountInput({ value, onChange, fx, onFxChange, p
     onFxChange({ currency, amount: foreignAmount, rate: r })
     onChange(ils ? String(Math.round(ils * 100) / 100) : '')
   }
+  function backToIls() {
+    // Resetting lastFetched matters: without it, switching away to a foreign
+    // currency again would skip the rate fetch (it still thinks it already
+    // fetched that one) and leave the rate box silently empty.
+    lastFetched.current = null
+    setRateDate(null)
+    setRateErr(false)
+    setMode('ils')
+    onFxChange(null)
+  }
+
   function setCurrency(c) {
+    if (c === ILS) { backToIls(); return }
     lastFetched.current = null
     setRateDate(null)
     onFxChange({ currency: c, amount: foreignAmount, rate: '' })
@@ -118,7 +137,7 @@ export default function CurrencyAmountInput({ value, onChange, fx, onFxChange, p
       {compact && amountBox}
       <div className="fx-row" style={{ marginTop: compact ? 6 : 0 }}>
         <select className="fx-currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
-          {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          {CURRENCIES.map((c) => <option key={c} value={c}>{CURRENCY_LABEL[c] || c}</option>)}
         </select>
         <input className="fx-amount" type="number" step="0.01" min="0" placeholder={t('amount')} value={foreignAmount}
           onChange={(e) => setForeign(e.target.value)} />
@@ -127,7 +146,7 @@ export default function CurrencyAmountInput({ value, onChange, fx, onFxChange, p
           onChange={(e) => setRate(e.target.value)} />
         <button type="button" className="btn btn-ghost btn-sm" title={t('refreshRate')}
           onClick={() => loadRate({ overwrite: true })} disabled={loadingRate}>↻</button>
-        <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setMode('ils'); onFxChange(null) }}>₪</button>
+        <button type="button" className="btn btn-sm" onClick={backToIls}>{t('backToIls')}</button>
       </div>
       <div className="fx-note">
         {loadingRate ? t('fetchingRate') : `= ${value ? money(value) : '—'}`}

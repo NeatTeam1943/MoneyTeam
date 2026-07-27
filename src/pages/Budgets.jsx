@@ -6,9 +6,10 @@ import { useSeason } from '../context/SeasonContext'
 import { useI18n } from '../lib/i18n'
 import { useToast } from '../lib/toast'
 import { useLookups } from '../lib/useLookups'
-import { money } from '../lib/format'
+import { money, lineTotal } from '../lib/format'
 import Modal from '../components/Modal'
 import { catLabel } from '../context/LookupsContext'
+import { useTeamScope } from '../context/TeamScopeContext'
 
 const axis = { fontSize: 12, fill: '#4c5570', fontFamily: 'Space Mono, monospace' }
 const tip = { background: '#fff', border: '1px solid #c6cde0', borderRadius: 8, fontSize: 13, color: '#151a2b' }
@@ -20,6 +21,7 @@ export default function Budgets() {
   const { activeId } = useSeason()
   const toast = useToast()
   const lk = useLookups()
+  const ts = useTeamScope()
   const [budgets, setBudgets] = useState([])
   const [expenses, setExpenses] = useState([])
   const [shopping, setShopping] = useState([])
@@ -33,8 +35,8 @@ export default function Budgets() {
     try {
       const [b, tl, sh] = await withTimeout(Promise.all([
         supabase.from('budgets').select('*').eq('season_id', activeId),
-        supabase.from('transaction_lines').select('amount,budget_id,transactions!inner(season_id)').eq('transactions.season_id', activeId),
-        supabase.from('shopping_items').select('est_price,quantity,category_id,status').eq('season_id', activeId),
+        supabase.from('transaction_lines').select('amount,budget_id,transactions!inner(season_id,team_scope)').eq('transactions.season_id', activeId),
+        supabase.from('shopping_items').select('est_price,quantity,category_id,status,team_scope').eq('season_id', activeId),
       ]))
       if (!b.error) setBudgets(b.data || [])
       if (!tl.error) setExpenses(tl.data || []) // expense LINES (each charges a budget)
@@ -64,6 +66,13 @@ export default function Budgets() {
     }
   }, [activeId, uid])
 
+  // A budget has no scope of its own — it hangs off a category, so it inherits
+  // that category's FRC/FTC marker. Overall (no category) always shows.
+  const catScope = useMemo(() => Object.fromEntries(lk.categories.map((c) => [c.id, c.team_scope])), [lk.categories])
+  const scopedBudgets = useMemo(() => budgets.filter((b) => !b.category_id || ts.matches(catScope[b.category_id])), [budgets, catScope, ts])
+  const scopedExpenses = useMemo(() => expenses.filter((l) => ts.matches(l.transactions?.team_scope)), [expenses, ts])
+  const scopedShopping = useMemo(() => shopping.filter((r) => ts.matches(r.team_scope)), [shopping, ts])
+
   // For each budget: spend + requested roll up over the category subtree.
   const budgetCat = useMemo(() => Object.fromEntries(budgets.map((b) => [b.id, b.category_id])), [budgets])
   // Same toggle as the Dashboard/Shopping charts — 'parent' (default) sums a
@@ -72,21 +81,24 @@ export default function Budgets() {
   // category, with nothing rolled up from children.
   const [categoryGrouping, setCategoryGrouping] = useState('parent')
 
-  const rows = useMemo(() => budgets.map((b) => {
+  // The toggle belongs to the chart at the top and nothing else. The budget
+  // cards below always show the canonical rolled-up figures, so flipping the
+  // chart's view can never change what a card claims is spent or remaining.
+  const buildRows = (grouping) => scopedBudgets.map((b) => {
     const isOverall = !b.category_id
     const set = isOverall ? null : lk.descendantsOf(b.category_id)
     // 'direct' for Overall means "not tracked under any specific budget at
     // all" (budget_id/category_id is null) — otherwise the toggle would do
     // nothing for this row, since "everything" and "everything rolled up"
     // are the same total. 'parent' keeps Overall as the full season total.
-    const inScope = categoryGrouping === 'direct'
+    const inScope = grouping === 'direct'
       ? (isOverall ? (cid) => cid == null : (cid) => cid === b.category_id)
       : (isOverall ? () => true : (cid) => cid && set.has(cid))
     // an expense's "category" is the category of the budget it was drawn from
-    const spent = expenses.reduce((s, l) => s + (inScope(budgetCat[l.budget_id]) ? Number(l.amount) : 0), 0)
-    const requested = shopping.reduce((s, r) => {
+    const spent = scopedExpenses.reduce((s, l) => s + (inScope(budgetCat[l.budget_id]) ? Number(l.amount) : 0), 0)
+    const requested = scopedShopping.reduce((s, r) => {
       if (r.status !== 'pending_approval' && r.status !== 'approved') return s
-      return s + (inScope(r.category_id) ? (Number(r.est_price) || 0) * (r.quantity || 1) : 0)
+      return s + (inScope(r.category_id) ? lineTotal(r) : 0)
     }, 0)
     return {
       ...b,
@@ -96,16 +108,22 @@ export default function Budgets() {
       pct: b.amount > 0 ? Math.min(999, (spent / Number(b.amount)) * 100) : 0,
       childOver: (() => {
         if (isOverall) return false
-        const childSum = budgets.reduce((sum, x) =>
+        const childSum = scopedBudgets.reduce((sum, x) =>
           (x.category_id && x.category_id !== b.category_id && set.has(x.category_id))
             ? sum + Number(x.amount) : sum, 0)
         return childSum > Number(b.amount)
       })(),
     }
-  }).sort((a, b) => (a.category_id ? 1 : 0) - (b.category_id ? 1 : 0) || b.amount - a.amount),
-    [budgets, expenses, shopping, budgetCat, lk, t, categoryGrouping])
+  }).sort((a, b) => (a.category_id ? 1 : 0) - (b.category_id ? 1 : 0) || b.amount - a.amount)
 
-  const chartData = useMemo(() => rows.map((r) => ({ name: r.label, [t('spent')]: r.spent, [t('requested')]: r.requested })), [rows, t])
+  // Cards: always 'parent' (the roll-up), independent of the chart toggle.
+  const rows = useMemo(() => buildRows('parent'),
+    [scopedBudgets, scopedExpenses, scopedShopping, budgetCat, lk, t])          // eslint-disable-line react-hooks/exhaustive-deps
+  // Chart: follows the toggle.
+  const chartRows = useMemo(() => buildRows(categoryGrouping),
+    [scopedBudgets, scopedExpenses, scopedShopping, budgetCat, lk, t, categoryGrouping])   // eslint-disable-line react-hooks/exhaustive-deps
+
+  const chartData = useMemo(() => chartRows.map((r) => ({ name: r.label, [t('spent')]: r.spent, [t('requested')]: r.requested })), [chartRows, t])
 
   async function del(id) {
     if (!confirm(t('confirmDelete'))) return

@@ -4,6 +4,7 @@ import { useI18n } from '../lib/i18n'
 import { useAuth } from '../context/AuthContext'
 import Modal from './Modal'
 import { catLabel } from '../context/LookupsContext'
+import { TeamScopePicker } from './TeamScope'
 
 const STATUSES = ['pending_approval', 'approved', 'ordered', 'received', 'cancelled']
 
@@ -21,11 +22,12 @@ export default function ShoppingForm({ editing, seasonId, categoryTree, vendorsA
     category_id: editing?.category_id || '',
     vendor: editing?.vendor || '',
     est_price: editing?.est_price || '',
-    quantity: editing?.quantity || 1,
+    quantity: editing?.quantity ?? 1,
     priority_level_id: editing?.priority_level_id || '',
     status: editing?.status || 'pending_approval',
     notes: editing?.notes || '',
     template_id: editing?.template_id || '',
+    team_scope: editing?.team_scope || 'both',
   }))
   const [spec, setSpec] = useState(() => editing?.spec || {})
   const [err, setErr] = useState('')
@@ -33,7 +35,17 @@ export default function ShoppingForm({ editing, seasonId, categoryTree, vendorsA
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value })
 
   const template = templates.find((tp) => tp.id === f.template_id)
-  const tfields = template?.fields || []
+  // Fields saved before typed fields existed have no `type` — read them as text.
+  const tfields = (template?.fields || []).map((fld) => ({ ...fld, type: fld.type || 'text' }))
+
+  // A multiselect answer is an array, everything else a scalar; both need the
+  // same "did they actually answer" test and the same display form.
+  const isBlank = (v) => (Array.isArray(v) ? v.length === 0 : !String(v ?? '').trim())
+  const showVal = (v) => (Array.isArray(v) ? v.join(', ') : String(v ?? '').trim())
+  const toggleMulti = (label, opt) => {
+    const cur = Array.isArray(spec[label]) ? spec[label] : []
+    setSpec({ ...spec, [label]: cur.includes(opt) ? cur.filter((x) => x !== opt) : [...cur, opt] })
+  }
 
   async function save() {
     if (!f.name.trim()) { setErr(t('requiredField') + ': ' + t('name')); return }
@@ -41,12 +53,14 @@ export default function ShoppingForm({ editing, seasonId, categoryTree, vendorsA
     if (!f.category_id) { setErr(t('requiredField') + ': ' + t('category')); return }
     // required template fields
     for (const fld of tfields) {
-      if (fld.required && !String(spec[fld.label] || '').trim()) { setErr(t('requiredField') + ': ' + fld.label); return }
+      if (fld.required && isBlank(spec[fld.label])) { setErr(t('requiredField') + ': ' + fld.label); return }
     }
     setErr(''); setBusy(true)
 
     // compose the template answers into the description, keep the structured spec too
-    const composed = tfields.map((fld) => spec[fld.label] ? `${fld.label}: ${spec[fld.label]}` : '').filter(Boolean).join(' | ')
+    const composed = tfields
+      .map((fld) => (isBlank(spec[fld.label]) ? '' : `${fld.label}: ${showVal(spec[fld.label])}`))
+      .filter(Boolean).join(' | ')
     const payload = {
       season_id: seasonId,
       name: f.name.trim(),
@@ -55,10 +69,11 @@ export default function ShoppingForm({ editing, seasonId, categoryTree, vendorsA
       category_id: f.category_id,
       vendor: f.vendor || null,
       est_price: f.est_price === '' ? null : Number(f.est_price),
-      quantity: Number(f.quantity) || 1,
+      quantity: Math.max(0, Number(f.quantity) || 0),
       priority_level_id: f.priority_level_id || null,
       notes: f.notes || null,
       template_id: f.template_id || null,
+      team_scope: f.team_scope || 'both',
       spec: template ? spec : null,
       description: template ? composed : (f.notes || null),
     }
@@ -92,6 +107,11 @@ export default function ShoppingForm({ editing, seasonId, categoryTree, vendorsA
         </div>
       )}
 
+      <div className="field">
+        <label>{t('teamScope')}</label>
+        <TeamScopePicker value={f.team_scope} onChange={(v) => setF({ ...f, team_scope: v })} />
+      </div>
+
       <div className="field"><label>{t('name')} *</label><input value={f.name} onChange={set('name')} /></div>
       <div className="field"><label>{t('url')}</label><input value={f.url} onChange={set('url')} placeholder="https://" /></div>
       <div className="grid-2">
@@ -112,7 +132,29 @@ export default function ShoppingForm({ editing, seasonId, categoryTree, vendorsA
           {tfields.map((fld) => (
             <div className="field" key={fld.label} style={{ marginBottom: 8 }}>
               <label>{fld.label}{fld.required ? ' *' : ''}</label>
-              <input value={spec[fld.label] || ''} onChange={(e) => setSpec({ ...spec, [fld.label]: e.target.value })} />
+              {fld.type === 'number' ? (
+                <input type="number" step="any" value={spec[fld.label] ?? ''}
+                  onChange={(e) => setSpec({ ...spec, [fld.label]: e.target.value })} />
+              ) : fld.type === 'select' ? (
+                <select value={spec[fld.label] ?? ''} onChange={(e) => setSpec({ ...spec, [fld.label]: e.target.value })}>
+                  <option value="">—</option>
+                  {(fld.options || []).map((o) => <option key={o} value={o}>{o}</option>)}
+                </select>
+              ) : fld.type === 'multiselect' ? (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {(fld.options || []).map((o) => (
+                    <label key={o} style={{ display: 'flex', alignItems: 'center', gap: 5, margin: 0, whiteSpace: 'nowrap' }}>
+                      <input type="checkbox" style={{ width: 'auto' }}
+                        checked={Array.isArray(spec[fld.label]) && spec[fld.label].includes(o)}
+                        onChange={() => toggleMulti(fld.label, o)} />
+                      {o}
+                    </label>
+                  ))}
+                  {!(fld.options || []).length && <span style={{ color: 'var(--text-faint)', fontSize: 12 }}>—</span>}
+                </div>
+              ) : (
+                <input value={spec[fld.label] ?? ''} onChange={(e) => setSpec({ ...spec, [fld.label]: e.target.value })} />
+              )}
             </div>
           ))}
         </div>
@@ -139,7 +181,7 @@ export default function ShoppingForm({ editing, seasonId, categoryTree, vendorsA
 
       <div className="grid-2">
         <div className="field"><label>{t('estPrice')} (₪)</label><input type="number" step="0.01" value={f.est_price} onChange={set('est_price')} /></div>
-        <div className="field"><label>{t('quantity')}</label><input type="number" min="1" value={f.quantity} onChange={set('quantity')} /></div>
+        <div className="field"><label>{t('quantity')}</label><input type="number" min="0" value={f.quantity} onChange={set('quantity')} /></div>
       </div>
       <div className="grid-2">
         <div className="field">

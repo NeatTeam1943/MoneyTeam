@@ -63,9 +63,14 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
-  const role = member?.role || null
+  // An anonymous session is a parent/guest: read-only, two screens, no members
+  // row and never any write. Derived from the JWT rather than a stored role,
+  // so there is no row anyone could edit to escalate it.
+  const isGuest = !!session?.user?.is_anonymous
+  const role = isGuest ? 'parent' : (member?.role || null)
   const isMentor = role === 'mentor'
   const isStudent = role === 'student'
+  const isParent = isGuest
   const value = {
     session,
     member,
@@ -73,6 +78,8 @@ export function AuthProvider({ children }) {
     role,
     isMentor,
     isStudent,
+    isParent,
+    isGuest,
     // permission gates (mentor / student / viewer model)
     canTransact: isMentor,                       // income / expense / transfer / buy / delete tx
     canBudget: isMentor || isStudent,            // add & edit budgets

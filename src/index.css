@@ -189,3 +189,42 @@ table.data tr:hover td { background: var(--panel-2); }
 .center-screen { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
 .login-card { width: 100%; max-width: 380px; }
 .login-card .tick-lg { width: 46px; height: 46px; border-radius: 10px; background: var(--orange); margin-bottom: 18px; }
+
+/* ---------------------------------------------------------------------------
+   Responsive form/amount widths.
+   These replace inline pixel widths that were set on the currency controls and
+   the expense-line editor. Fixed px meant the number was unreadable on a phone
+   and needlessly cramped on a wide screen; clamp() lets each control grow with
+   the viewport between a sensible floor and ceiling.
+   --------------------------------------------------------------------------- */
+
+.amount-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.amount-row > .amount-input { flex: 1 1 clamp(9rem, 22vw, 16rem); min-width: 8rem; }
+
+/* currency + foreign amount + rate; each is allowed to wrap onto its own line */
+.fx-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.fx-currency { flex: 0 0 auto; width: clamp(5rem, 12vw, 7rem); }
+.fx-amount   { flex: 1 1 clamp(7rem, 18vw, 12rem); min-width: 6.5rem; }
+.fx-rate     { flex: 1 1 clamp(6rem, 15vw, 10rem); min-width: 6rem; }
+.fx-note     { font-size: 12px; color: var(--text-faint); margin-top: 6px; }
+
+/* expense lines: a grid that collapses to stacked fields on narrow screens */
+.line-row {
+  display: grid; gap: 8px; margin-bottom: 12px; align-items: start;
+  grid-template-columns: minmax(9rem, 1.2fr) minmax(10rem, 1fr) minmax(10rem, 1.6fr) auto;
+}
+@media (max-width: 720px) {
+  .line-row { grid-template-columns: 1fr auto; }
+  .line-row > .line-desc { grid-column: 1 / -1; }
+}
+
+/* the modal itself should track the viewport, not a fixed 760px */
+.modal.modal-wide { max-width: min(60rem, 96vw); }
+
+/* toolbars wrap instead of overflowing on a phone */
+.toolbar { flex-wrap: wrap; }
+@media (max-width: 640px) {
+  .toolbar > .btn, .toolbar > select, .toolbar > input { flex: 1 1 auto; }
+  .stats { grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); }
+  .topbar { flex-wrap: wrap; row-gap: 8px; }
+}

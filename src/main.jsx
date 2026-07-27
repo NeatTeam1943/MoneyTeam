@@ -6,6 +6,7 @@ import { I18nProvider } from './lib/i18n'
 import { AuthProvider } from './context/AuthContext'
 import { SeasonProvider } from './context/SeasonContext'
 import { LookupsProvider } from './context/LookupsContext'
+import { TeamScopeProvider } from './context/TeamScopeContext'
 import { ToastProvider } from './lib/toast'
 import './index.css'
 
@@ -16,9 +17,11 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <AuthProvider>
           <LookupsProvider>
             <SeasonProvider>
-              <HashRouter>
-                <App />
-              </HashRouter>
+              <TeamScopeProvider>
+                <HashRouter>
+                  <App />
+                </HashRouter>
+              </TeamScopeProvider>
             </SeasonProvider>
           </LookupsProvider>
         </AuthProvider>

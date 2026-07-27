@@ -1,8 +1,20 @@
 import { supabase } from '../lib/supabase'
+import { useState } from 'react'
 import { useI18n } from '../lib/i18n'
 
 export default function Login() {
   const { t, toggle, lang } = useI18n()
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function enterAsParent() {
+    setBusy(true); setErr('')
+    const { error } = await supabase.auth.signInAnonymously()
+    setBusy(false)
+    // The most likely failure by far is anonymous sign-ins being switched off
+    // in the Supabase dashboard, so say that rather than echoing a raw error.
+    if (error) setErr(t('guestSignInFailed'))
+  }
 
   return (
     <div className="center-screen">
@@ -22,6 +34,19 @@ export default function Login() {
           >
             {t('signInWithGoogle')}
           </button>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '18px 0 14px' }}>
+            <div style={{ flex: 1, height: 1, background: 'var(--line)' }} />
+            <span style={{ color: 'var(--text-faint)', fontSize: 12 }}>{t('or')}</span>
+            <div style={{ flex: 1, height: 1, background: 'var(--line)' }} />
+          </div>
+
+          <button type="button" className="btn" style={{ width: '100%', justifyContent: 'center' }}
+            onClick={enterAsParent} disabled={busy}>
+            {busy ? '…' : t('enterAsParent')}
+          </button>
+          <p style={{ color: 'var(--text-faint)', fontSize: 12, marginBottom: 0 }}>{t('parentViewHint')}</p>
+          {err && <div className="err">{err}</div>}
         </div>
       </div>
     </div>

@@ -14,7 +14,10 @@ async function fetchRate(currency) {
   const data = await res.json()
   const rate = data?.rates?.ILS
   if (!rate) throw new Error('no ILS rate returned')
-  return rate
+  // `date` is the ECB reference date the rate belongs to — usually the last
+  // working day, not today. Showing it is the difference between "a rate" and
+  // "a rate you can defend to an auditor".
+  return { rate, date: data?.date || null }
 }
 
 // Renders a ₪-only amount input by default. Clicking "currency" swaps in a
@@ -22,24 +25,47 @@ async function fetchRate(currency) {
 // auto-suggested but fully editable, and switching back to ₪ just uses the
 // plain amount again. `value` is always the final ILS number the parent form
 // uses; `fx` (currency/amount/rate) is metadata only, for the audit columns.
-export default function CurrencyAmountInput({ value, onChange, fx, onFxChange, placeholder }) {
+//
+// `compact` is for narrow columns (the expense-lines editor): the number gets
+// the FULL width of its cell instead of sharing the row with the currency
+// button, and the currency controls open on their own line underneath. Inline
+// they were squeezed to a few characters and the amount was unreadable.
+export default function CurrencyAmountInput({ value, onChange, fx, onFxChange, placeholder, compact = false }) {
   const { t } = useI18n()
   const [mode, setMode] = useState(fx?.currency ? 'foreign' : 'ils')
   const [loadingRate, setLoadingRate] = useState(false)
+  const [rateDate, setRateDate] = useState(null)
+  const [rateErr, setRateErr] = useState(false)
   const lastFetched = useRef(null)
 
   const currency = fx?.currency || 'USD'
   const foreignAmount = fx?.amount ?? ''
   const rate = fx?.rate ?? ''
 
+  // Auto-fetch happens ONCE per currency, and deliberately does not overwrite a
+  // rate that is already set: on an existing purchase that rate is the historic
+  // one the money actually changed hands at, and silently refreshing it would
+  // rewrite history. Use ↻ to pull today's rate on purpose.
+  function loadRate({ overwrite }) {
+    setLoadingRate(true); setRateErr(false)
+    return fetchRate(currency)
+      .then(({ rate: r, date }) => {
+        setRateDate(date)
+        const next = overwrite ? r : (fx?.rate || r)
+        onFxChange({ ...fx, currency, rate: next })
+        if (overwrite) {
+          const ils = (Number(foreignAmount) || 0) * (Number(next) || 0)
+          onChange(ils ? String(Math.round(ils * 100) / 100) : '')
+        }
+      })
+      .catch(() => setRateErr(true))   // keep whatever rate is there — never block entry
+      .finally(() => setLoadingRate(false))
+  }
+
   useEffect(() => {
     if (mode !== 'foreign' || lastFetched.current === currency) return
     lastFetched.current = currency
-    setLoadingRate(true)
-    fetchRate(currency)
-      .then((r) => onFxChange({ ...fx, currency, rate: fx?.rate || r }))
-      .catch(() => { /* keep whatever rate is already there — nothing to block on */ })
-      .finally(() => setLoadingRate(false))
+    loadRate({ overwrite: false })
   }, [mode, currency])   // eslint-disable-line react-hooks/exhaustive-deps
 
   function setForeign(amt) {
@@ -54,35 +80,59 @@ export default function CurrencyAmountInput({ value, onChange, fx, onFxChange, p
   }
   function setCurrency(c) {
     lastFetched.current = null
+    setRateDate(null)
     onFxChange({ currency: c, amount: foreignAmount, rate: '' })
   }
 
+  const amountBox = (
+    <input type="number" step="0.01" min="0" placeholder={placeholder} value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className={compact ? undefined : 'amount-input'}
+      style={compact ? { width: '100%' } : undefined} />
+  )
+
   if (mode === 'ils') {
+    if (compact) {
+      return (
+        <div>
+          {amountBox}
+          <button type="button" className="btn btn-ghost btn-sm"
+            style={{ padding: '2px 4px', fontSize: 11, marginTop: 2 }}
+            onClick={() => setMode('foreign')}>{t('otherCurrency')}</button>
+        </div>
+      )
+    }
     return (
-      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-        <input type="number" step="0.01" min="0" placeholder={placeholder} value={value}
-          onChange={(e) => onChange(e.target.value)} style={{ flex: 1 }} />
+      <div className="amount-row">
+        {amountBox}
         <button type="button" className="btn btn-ghost btn-sm" onClick={() => setMode('foreign')}>{t('otherCurrency')}</button>
       </div>
     )
   }
 
+  // Foreign mode. In compact columns the ILS total keeps the first line to
+  // itself and the currency/amount/rate controls flow onto the line(s) below;
+  // flexWrap does the same job at any width, so nothing is ever crushed.
   return (
     <div>
-      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-        <select value={currency} onChange={(e) => setCurrency(e.target.value)} style={{ width: 80 }}>
+      {compact && amountBox}
+      <div className="fx-row" style={{ marginTop: compact ? 6 : 0 }}>
+        <select className="fx-currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
           {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
-        <input type="number" step="0.01" min="0" placeholder={t('amount')} value={foreignAmount}
-          onChange={(e) => setForeign(e.target.value)} style={{ flex: 1 }} />
+        <input className="fx-amount" type="number" step="0.01" min="0" placeholder={t('amount')} value={foreignAmount}
+          onChange={(e) => setForeign(e.target.value)} />
         <span style={{ color: 'var(--text-faint)' }}>×</span>
-        <input type="number" step="0.0001" min="0" value={rate} placeholder={loadingRate ? '…' : t('rate')}
-          onChange={(e) => setRate(e.target.value)} style={{ width: 90 }} />
+        <input className="fx-rate" type="number" step="0.0001" min="0" value={rate} placeholder={loadingRate ? '…' : t('rate')}
+          onChange={(e) => setRate(e.target.value)} />
+        <button type="button" className="btn btn-ghost btn-sm" title={t('refreshRate')}
+          onClick={() => loadRate({ overwrite: true })} disabled={loadingRate}>↻</button>
         <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setMode('ils'); onFxChange(null) }}>₪</button>
       </div>
-      <div style={{ fontSize: 12, color: 'var(--text-faint)', marginTop: 4 }}>
+      <div className="fx-note">
         {loadingRate ? t('fetchingRate') : `= ${value ? money(value) : '—'}`}
-        {!loadingRate && rate && <> · {t('rateHint')}</>}
+        {!loadingRate && rate ? <> · {rateDate ? `${t('rateSource')} ${rateDate}` : t('rateManual')} · {t('rateHint')}</> : null}
+        {rateErr && <> · <span style={{ color: 'var(--danger)' }}>{t('rateFetchFailed')}</span></>}
       </div>
     </div>
   )

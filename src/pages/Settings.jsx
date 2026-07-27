@@ -59,6 +59,9 @@ export default function Settings() {
       fields: [
         { key: 'name', label: t('name'), type: 'text', required: true },
         { key: 'parent_id', label: t('parent'), dynamic: 'categories' },
+        { key: 'team_scope', label: t('teamScope'), type: 'select', default: 'both', options: [
+          { value: 'both', label: t('scope_both') }, { value: 'frc', label: t('scope_frc') }, { value: 'ftc', label: t('scope_ftc') },
+        ] },
         { key: 'color', label: t('color'), type: 'color' },
       ],
     },

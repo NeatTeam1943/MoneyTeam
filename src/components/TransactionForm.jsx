@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { useI18n } from '../lib/i18n'
 import { money } from '../lib/format'
 import Modal from './Modal'
 import CurrencyAmountInput from './CurrencyAmountInput'
+import { TeamScopePicker } from './TeamScope'
 
 const OTHER_TYPES = ['income', 'transfer', 'in_kind'] // expense handled separately (with lines)
 
@@ -27,12 +28,20 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
     payer_name: seed.payer_name || '',
     receipt_url: seed.receipt_url || '',
     notes: seed.notes || '',
+    team_scope: seed.team_scope || 'both',
   }))
   // expense lines: [{ budget_id, amount, description, shopping_item_id }]
   const [lines, setLines] = useState(() => seed.lines?.length ? seed.lines.map(normLine) : [emptyLine()])
   const [file, setFile] = useState(null)
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
+
+  // The header description defaults to the comma-joined line descriptions and
+  // keeps tracking them as lines are added or renamed — until you type your
+  // own, at which point it stops following and stays exactly as written. The
+  // ↻ button puts it back on auto. Editing an existing row starts in manual
+  // mode, so opening a saved purchase never silently rewrites its description.
+  const [descMode, setDescMode] = useState(() => (seed.description ? 'manual' : 'auto'))
 
   // When editing an existing expense, load its lines (or seed one from the header for legacy rows)
   useEffect(() => {
@@ -48,6 +57,15 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
   const isExpense = f.type === 'expense'
   const showTo = f.type === 'transfer'
   const showSource = f.type === 'income' || f.type === 'in_kind'
+
+  const autoDescription = useMemo(
+    () => lines.map((l) => (l.description || '').trim()).filter(Boolean).join(', '),
+    [lines])
+
+  useEffect(() => {
+    if (!isExpense || descMode !== 'auto') return
+    setF((prev) => (prev.description === autoDescription ? prev : { ...prev, description: autoDescription }))
+  }, [autoDescription, descMode, isExpense])
 
   const total = lines.reduce((s, l) => s + (Number(l.amount) || 0), 0)
   const setLine = (i, k, v) => setLines(lines.map((l, idx) => idx === i ? { ...l, [k]: v } : l))
@@ -74,6 +92,11 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
         amount: Number(l.amount),
         shopping_item_id: l.shopping_item_id || null,
         description: l.description || null,
+        // The currency breadcrumb used to be dropped on the floor for expenses
+        // — entered per line, never written anywhere. It is persisted now.
+        fx_currency: l.fx?.currency || null,
+        fx_amount: l.fx?.amount ? Number(l.fx.amount) : null,
+        fx_rate: l.fx?.rate ? Number(l.fx.rate) : null,
       }))
       const { data, error } = await supabase.rpc('save_expense', {
         p_tx_id: editing?.id || null,
@@ -85,6 +108,7 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
         p_receipt_url: receipt_url,
         p_lines,
         p_payer_name: f.payer_name || null,
+        p_team_scope: f.team_scope || 'both',
       })
       if (error) throw error
       onSaved({ id: data })
@@ -112,6 +136,7 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
         description: f.description || null,
         payer_name: f.payer_name || null,
         notes: f.notes || null,
+        team_scope: f.team_scope || 'both',
         fx_currency: fx?.currency || null,
         fx_amount: fx?.amount ? Number(fx.amount) : null,
         fx_rate: fx?.rate ? Number(fx.rate) : null,
@@ -128,6 +153,7 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
 
   return (
     <Modal
+      wide={isExpense}
       title={editing ? t('editTransaction') : t('addTransaction')}
       onClose={onClose}
       footer={<>
@@ -143,6 +169,11 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
             <button key={ty} className={'tab' + (f.type === ty ? ' active' : '')} onClick={() => setF({ ...f, type: ty })}>{t(ty)}</button>
           ))}
         </div>
+      </div>
+
+      <div className="field">
+        <label>{t('teamScope')}</label>
+        <TeamScopePicker value={f.team_scope} onChange={(v) => setF({ ...f, team_scope: v })} />
       </div>
 
       <div className="grid-2">
@@ -217,16 +248,17 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
           <div className="field">
             <label>{t('lines')}</label>
             {lines.map((l, i) => (
-              <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 6, alignItems: 'center' }}>
-                <select value={l.budget_id} onChange={(e) => setLine(i, 'budget_id', e.target.value)} style={{ flex: 1.3 }}>
+              <div key={i} className="line-row">
+                <select value={l.budget_id} onChange={(e) => setLine(i, 'budget_id', e.target.value)}>
                   <option value="">{t('none')}</option>
                   {budgets.map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}
                 </select>
-                <div style={{ width: 140 }}>
-                  <CurrencyAmountInput value={l.amount} onChange={(v) => setLine(i, 'amount', v)}
+                <div>
+                  <CurrencyAmountInput compact value={l.amount} onChange={(v) => setLine(i, 'amount', v)}
                     fx={l.fx} onFxChange={(fxVal) => setLine(i, 'fx', fxVal)} placeholder="₪" />
                 </div>
-                <input placeholder={t('description')} value={l.description} onChange={(e) => setLine(i, 'description', e.target.value)} style={{ flex: 1 }} />
+                <input className="line-desc" placeholder={t('description')} value={l.description}
+                  onChange={(e) => setLine(i, 'description', e.target.value)} />
                 <button className="btn btn-ghost btn-sm btn-danger" onClick={() => removeLine(i)}>✕</button>
               </div>
             ))}
@@ -240,7 +272,19 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
         </>
       )}
 
-      <div className="field"><label>{t('description')}</label><input value={f.description} onChange={set('description')} /></div>
+      <div className="field">
+        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <span>{t('description')}</span>
+          {isExpense && (descMode === 'auto'
+            ? <span className="badge">{t('autoDescription')}</span>
+            : <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDescMode('auto')}>↻ {t('autoDescription')}</button>)}
+        </label>
+        <input value={f.description}
+          onChange={(e) => { if (isExpense) setDescMode('manual'); setF({ ...f, description: e.target.value }) }} />
+        {isExpense && descMode === 'auto' && (
+          <p style={{ color: 'var(--text-faint)', fontSize: 12, margin: '4px 0 0' }}>{t('autoDescriptionHint')}</p>
+        )}
+      </div>
       <div className="field"><label>{t('payer')}</label><input value={f.payer_name} onChange={set('payer_name')} placeholder={t('payerHint')} /></div>
       {!isExpense && <div className="field"><label>{t('notes')}</label><textarea rows="2" value={f.notes} onChange={set('notes')} /></div>}
 
@@ -255,5 +299,5 @@ const normLine = (l) => ({
   amount: l.amount ?? '',
   description: l.description || '',
   shopping_item_id: l.shopping_item_id || '',
-  fx: null,   // fx breadcrumb is entry-time only, never persisted per line
+  fx: l.fx_currency ? { currency: l.fx_currency, amount: l.fx_amount, rate: l.fx_rate } : null,
 })

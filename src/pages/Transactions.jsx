@@ -9,14 +9,18 @@ import { money, fmtDate, typePill, TX_TYPES } from '../lib/format'
 import { exportTransactions, downloadAllReceipts } from '../lib/export'
 import { catLabel } from '../context/LookupsContext'
 import TransactionForm from '../components/TransactionForm'
+import { useTeamScope } from '../context/TeamScopeContext'
+import { TeamScopeBadge } from '../components/TeamScope'
+import ReceiptPreview from '../components/ReceiptPreview'
 
 export default function Transactions() {
   const { t } = useI18n()
-  const { canTransact, session } = useAuth()
+  const { canTransact, session, isParent } = useAuth()
   const uid = session?.user?.id
   const { activeId, active } = useSeason()
   const toast = useToast()
   const lk = useLookups()
+  const ts = useTeamScope()
   const [rows, setRows] = useState([])
   const [budgets, setBudgets] = useState([])
   const [txLines, setTxLines] = useState({})
@@ -25,6 +29,7 @@ export default function Transactions() {
   const [balances, setBalances] = useState([])
   const [editing, setEditing] = useState(null)
   const [showForm, setShowForm] = useState(false)
+  const [preview, setPreview] = useState(null)   // { path, number }
 
   const [q, setQ] = useState('')
   const [fType, setFType] = useState('')
@@ -44,7 +49,7 @@ export default function Transactions() {
     try {
       // All four queries in parallel — previously they ran one after another.
       const [tx, bal, bg, tl] = await withTimeout(Promise.all([
-        supabase.from('transactions_view').select('*').eq('season_id', activeId),
+        supabase.from(isParent ? 'transactions_guest' : 'transactions_view').select('*').eq('season_id', activeId),
         supabase.from('account_balances').select('*'),
         supabase.from('budgets').select('*').eq('season_id', activeId),
         supabase.from('transaction_lines').select('transaction_id,budget_id,amount,transactions!inner(season_id)').eq('transactions.season_id', activeId),
@@ -122,6 +127,7 @@ export default function Transactions() {
 
   const filtered = useMemo(() => {
     let out = enriched.filter((r) => {
+      if (!ts.matches(r.team_scope)) return false
       if (fType && r.type !== fType) return false
       if (fAccount && r.account_id !== fAccount && r.to_account_id !== fAccount) return false
       if (fCategory) {
@@ -149,7 +155,7 @@ export default function Transactions() {
       return 0
     })
     return out
-  }, [enriched, fType, fAccount, fCategory, fSource, from, to, q, sort, txCategoryIds, lk])
+  }, [enriched, fType, fAccount, fCategory, fSource, from, to, q, sort, txCategoryIds, lk, ts])
 
   function toggleSort(col) {
     setSort((s) => (s.col === col ? { col, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'asc' }))
@@ -223,12 +229,13 @@ export default function Transactions() {
             <tr>
               {th('date', t('date'))}
               {th('type', t('type'))}
+              <th>{t('teamScope')}</th>
               {th('amount', t('amount'))}
               <th>{t('account')}</th>
               <th>{t('category')} / {t('source')}</th>
               <th>{t('description')}</th>
-              <th>{t('payer')}</th>
-              <th>{t('receipt')}</th>
+              {!isParent && <th>{t('payer')}</th>}
+              {!isParent && <th>{t('receipt')}</th>}
               {canTransact && <th>{t('actions')}</th>}
             </tr>
           </thead>
@@ -237,12 +244,13 @@ export default function Transactions() {
               <tr key={r.id}>
                 <td className="mono">{fmtDate(r.date)}</td>
                 <td><span className={typePill[r.type]}>{t(r.type)}</span></td>
+                <td><TeamScopeBadge scope={r.team_scope} /></td>
                 <td className="num">{money(r.amount)}</td>
                 <td>{r.type === 'transfer' ? `${r.accountName} → ${r.toAccountName}` : r.accountName || '—'}</td>
                 <td>{r.type === 'expense' ? (r.budgetName || '—') : (r.categoryName || r.sourceName || '—')}</td>
                 <td style={{ color: 'var(--text-dim)' }}>{r.description || r.vendor || '—'}</td>
-                <td style={{ color: 'var(--text-dim)' }}>{r.payer_display || '—'}</td>
-                <td><Receipt path={r.receipt_url} number={r.receipt_number} /></td>
+                {!isParent && <td style={{ color: 'var(--text-dim)' }}>{r.payer_display || '—'}</td>}
+                {!isParent && <td><Receipt path={r.receipt_url} number={r.receipt_number} onOpen={setPreview} /></td>}
                 {canTransact && (
                   <td>
                     <button className="btn btn-ghost btn-sm" onClick={() => { setEditing(r); setShowForm(true) }}>{t('edit')}</button>
@@ -255,6 +263,8 @@ export default function Transactions() {
         </table>
         {loading ? <div className="empty">{t('loading')}</div> : (!filtered.length && <div className="empty">{t('noRows')}</div>)}
       </div>
+
+      {preview && <ReceiptPreview path={preview.path} number={preview.number} onClose={() => setPreview(null)} />}
 
       {showForm && (
         <TransactionForm
@@ -273,13 +283,7 @@ export default function Transactions() {
   )
 }
 
-function Receipt({ path, number }) {
-  const [url, setUrl] = useState(null)
-  async function open() {
-    if (url) { window.open(url, '_blank'); return }
-    const { data } = await supabase.storage.from('receipts').createSignedUrl(path, 60)
-    if (data?.signedUrl) { setUrl(data.signedUrl); window.open(data.signedUrl, '_blank') }
-  }
+function Receipt({ path, number, onOpen }) {
   if (!path) return <span style={{ color: 'var(--text-faint)' }}>{number || '—'}</span>
-  return <button className="btn btn-ghost btn-sm" onClick={open}>קבלה ↗</button>
+  return <button className="btn btn-ghost btn-sm" onClick={() => onOpen({ path, number })}>קבלה 🔍</button>
 }

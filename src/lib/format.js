@@ -3,6 +3,19 @@ const ils = new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS',
 export const money = (n) => ils.format(Number(n || 0))
 export const num = (n) => new Intl.NumberFormat('he-IL', { maximumFractionDigits: 2 }).format(Number(n || 0))
 
+// A negative figure should read as negative at a glance — an account in
+// overdraft or a budget blown past its limit is the thing you most need to
+// see, and a minus sign alone is easy to miss in a wall of numbers.
+export const amountColor = (n) => (Number(n) < 0 ? 'var(--danger)' : 'var(--text)')
+export const signedColor = (n) => (Number(n) < 0 ? 'var(--danger)' : 'var(--ok)')
+
+// `quantity || 1` looked harmless until the 2027 import brought in rows with a
+// deliberate quantity of 0 ("on the list, not decided yet") — 0 is falsy, so
+// every one of them was silently costed as a single unit. Only a missing
+// quantity should default to 1; an explicit 0 means 0.
+export const qtyOf = (r) => (r?.quantity == null ? 1 : Number(r.quantity) || 0)
+export const lineTotal = (r) => (Number(r?.est_price) || 0) * qtyOf(r)
+
 export const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '')
 
 // month key + label for grouping charts

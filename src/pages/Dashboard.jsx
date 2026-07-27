@@ -8,7 +8,8 @@ import { useSeason } from '../context/SeasonContext'
 import { useAuth } from '../context/AuthContext'
 import { useI18n } from '../lib/i18n'
 import { useLookups } from '../lib/useLookups'
-import { money, monthKey, typeColor } from '../lib/format'
+import { money, monthKey, typeColor, amountColor } from '../lib/format'
+import { useTeamScope } from '../context/TeamScopeContext'
 
 const axis = { fontSize: 12, fill: '#4c5570', fontFamily: 'Space Mono, monospace' }
 const CATCOLORS = ['#ff9100', '#4d63ff', '#b06bff', '#35c26b', '#ff4d5e', '#ffc14d', '#7aa0ff', '#d98aff']
@@ -16,34 +17,38 @@ const CATCOLORS = ['#ff9100', '#4d63ff', '#b06bff', '#35c26b', '#ff4d5e', '#ffc1
 export default function Dashboard() {
   const { t } = useI18n()
   const { activeId, active } = useSeason()
-  const { session } = useAuth()
+  const { session, isParent } = useAuth()
   const uid = session?.user?.id
   const { categoryName, sourceName, categories } = useLookups()
-  const [rows, setRows] = useState([])
+  const ts = useTeamScope()
+  const [allRows, setAllRows] = useState([])
   const [balances, setBalances] = useState([])
   const [budgets, setBudgets] = useState([])
-  const [waiting, setWaiting] = useState(0)
-  const [lines, setLines] = useState([])
+  const [waitingRows, setWaitingRows] = useState([])
+  const [allLines, setAllLines] = useState([])
 
   function loadDashboard() {
     if (!activeId || !session?.user?.id) return
-    supabase.from('transactions').select('*').eq('season_id', activeId)
-      .then(({ data, error }) => { if (!error) setRows(data || []) })
-    supabase.from('account_balances').select('*').then(({ data, error }) => { if (!error) setBalances(data || []) })
+    // Guests read the column-censored views and skip the three sources they
+    // have no grant on. Firing them anyway would just log RLS errors and draw
+    // empty charts, which reads as "the team spent nothing" rather than
+    // "you can't see this".
+    supabase.from(isParent ? 'transactions_guest' : 'transactions').select('*').eq('season_id', activeId)
+      .then(({ data, error }) => { if (!error) setAllRows(data || []) })
+    supabase.from(isParent ? 'account_balances_guest' : 'account_balances').select('*')
+      .then(({ data, error }) => { if (!error) setBalances(data || []) })
+    if (isParent) return
     supabase.from('budgets').select('*').eq('season_id', activeId)
       .then(({ data, error }) => { if (!error) setBudgets(data || []) })
-    supabase.from('transaction_lines').select('amount,budget_id,transactions!inner(season_id)').eq('transactions.season_id', activeId)
-      .then(({ data, error }) => { if (!error) setLines(data || []) })
+    supabase.from('transaction_lines').select('amount,budget_id,transactions!inner(season_id,team_scope)').eq('transactions.season_id', activeId)
+      .then(({ data, error }) => { if (!error) setAllLines(data || []) })
     // shopping items still waiting to be bought: not yet linked to a purchase
     // and not cancelled/received.
-    supabase.from('shopping_items').select('id,status,transaction_id').eq('season_id', activeId)
-      .then(({ data }) => {
-        const n = (data || []).filter((s) => !s.transaction_id && s.status !== 'cancelled' && s.status !== 'received').length
-        setWaiting(n)
-      })
+    supabase.from('shopping_items').select('id,status,transaction_id,team_scope').eq('season_id', activeId)
+      .then(({ data }) => setWaitingRows(data || []))
   }
 
-  useEffect(() => { loadDashboard() }, [activeId, uid])
+  useEffect(() => { loadDashboard() }, [activeId, uid, isParent])   // eslint-disable-line react-hooks/exhaustive-deps
 
   // Re-fetch on returning to the tab so a request Chrome dropped in the
   // background gets a fresh attempt. Already silent — these are individual
@@ -58,6 +63,15 @@ export default function Dashboard() {
       document.removeEventListener('visibilitychange', onVis)
     }
   }, [activeId, uid])
+
+  // One place where the top-bar FRC/FTC checklist is applied, so every stat,
+  // chart and total below is filtered consistently — nothing can be "filtered"
+  // in one panel and not another.
+  const rows  = useMemo(() => allRows.filter((r) => ts.matches(r.team_scope)), [allRows, ts])
+  const lines = useMemo(() => allLines.filter((l) => ts.matches(l.transactions?.team_scope)), [allLines, ts])
+  const waiting = useMemo(() => waitingRows.filter(
+    (s) => !s.transaction_id && s.status !== 'cancelled' && s.status !== 'received' && ts.matches(s.team_scope)
+  ).length, [waitingRows, ts])
 
   const totals = useMemo(() => {
     let income = 0, expense = 0, inkind = 0
@@ -121,13 +135,13 @@ export default function Dashboard() {
         <Stat k={t('totalIncome')} v={money(totals.income)} c="var(--in)" />
         <Stat k={t('totalExpense')} v={money(totals.expense)} c="var(--out)" />
         <Stat k={t('net')} v={money(totals.net)} c={totals.net >= 0 ? 'var(--ok)' : 'var(--danger)'} />
-        <Stat k={t('overBudget')} v={overBudget.hasBudget ? money(overBudget.over) : '—'} c={overBudget.over > 0 ? 'var(--danger)' : 'var(--ok)'} />
-        <Stat k={t('waitingToBuy')} v={String(waiting)} c="var(--out)" />
+        {!isParent && <Stat k={t('overBudget')} v={overBudget.hasBudget ? money(overBudget.over) : '—'} c={overBudget.over > 0 ? 'var(--danger)' : 'var(--ok)'} />}
+        {!isParent && <Stat k={t('waitingToBuy')} v={String(waiting)} c="var(--out)" />}
       </div>
 
       <div className="section-title">{t('accountBalances')}</div>
       <div className="stats">
-        {balances.map((b) => <Stat key={b.id} k={b.name} v={money(b.balance)} c="var(--text)" small />)}
+        {balances.map((b) => <Stat key={b.id} k={b.name} v={money(b.balance)} c={amountColor(b.balance)} small />)}
         {!balances.length && <div className="empty">{t('noRows')}</div>}
       </div>
 
@@ -147,7 +161,7 @@ export default function Dashboard() {
       </div>
 
       <div className="charts" style={{ marginTop: 16 }}>
-        <div className="panel panel-pad">
+        {!isParent && <div className="panel panel-pad">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
             <div className="section-title" style={{ marginTop: 0, marginBottom: 0 }}>{t('byCategory')}</div>
             <div className="tabs" style={{ marginBottom: 0 }}>
@@ -166,7 +180,7 @@ export default function Dashboard() {
               </PieChart>
             </ResponsiveContainer>
           </div>
-        </div>
+        </div>}
         <div className="panel panel-pad">
           <div className="section-title" style={{ marginTop: 0 }}>{t('bySource')}</div>
           <div style={{ height: 260, direction: 'ltr' }}>

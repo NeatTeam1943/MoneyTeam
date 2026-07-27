@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx'
-import { fmtDate } from './format'
+import { fmtDate, lineTotal } from './format'
 
 // rows: enriched transactions (with account/category/source names resolved)
 // meta: { seasonName, accounts:[{name,balance}], periodLabel }
@@ -9,6 +9,7 @@ export function exportTransactions(rows, meta = {}) {
   const txSheet = rows.map((r) => ({
     Date: fmtDate(r.date),
     Type: r.type,
+    Team: r.team_scope || 'both',
     Amount: Number(r.amount),
     Account: r.accountName || '',
     'To account': r.toAccountName || '',
@@ -57,12 +58,13 @@ export function exportShopping(items, meta = {}) {
   const wb = XLSX.utils.book_new()
   const sheet = items.map((r) => ({
     Name: r.name,
+    Team: r.team_scope || 'both',
     SKU: r.sku || '',
     Category: r.categoryName || '',
     Vendor: r.vendor || '',
     'Est. price': r.est_price != null ? Number(r.est_price) : '',
     Qty: r.quantity,
-    'Est. total': r.est_price != null ? Number(r.est_price) * (r.quantity || 1) : '',
+    'Est. total': r.est_price != null ? lineTotal(r) : '',
     Priority: r.priorityName || '',
     Status: r.status,
     Link: r.url || '',
@@ -73,7 +75,7 @@ export function exportShopping(items, meta = {}) {
   const byStatus = {}
   const byCat = {}
   for (const r of items) {
-    const tot = (r.est_price != null ? Number(r.est_price) : 0) * (r.quantity || 1)
+    const tot = lineTotal(r)
     byStatus[r.status] = (byStatus[r.status] || 0) + tot
     const c = r.categoryName || '—'
     byCat[c] = (byCat[c] || 0) + tot
@@ -133,4 +135,30 @@ export async function downloadAllReceipts(rows, supabase, meta = {}, onProgress)
   a.click()
   URL.revokeObjectURL(a.href)
   return { count: withReceipts.length, failed }
+}
+
+// meta: { periodLabel, seasonName, totals, byMonth, byCategory, bySource, byAccount, topExpenses }
+export function exportReport(meta) {
+  const wb = XLSX.utils.book_new()
+  const { totals = {} } = meta
+  const summary = [
+    { Metric: 'Income', Value: Number(totals.income || 0) },
+    { Metric: 'Expense', Value: Number(totals.expense || 0) },
+    { Metric: 'Net', Value: Number(totals.net || 0) },
+    { Metric: 'In-kind', Value: Number(totals.inkind || 0) },
+    { Metric: 'Period', Value: meta.periodLabel || '' },
+    { Metric: 'Season', Value: meta.seasonName || '' },
+  ]
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), 'Summary')
+
+  const named = (rows) => (rows || []).map((r) => ({ Name: r.name, Total: Number(r.value) }))
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(meta.byMonth || []), 'By month')
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(named(meta.byCategory)), 'By category')
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(named(meta.bySource)), 'By source')
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(named(meta.byAccount)), 'By account')
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(meta.topExpenses || []), 'Top expenses')
+
+  const stamp = new Date().toISOString().slice(0, 10)
+  const label = (meta.periodLabel || 'period').replace(/[^\w\u0590-\u05FF-]+/g, '_')
+  XLSX.writeFile(wb, `frc-report_${label}_${stamp}.xlsx`)
 }

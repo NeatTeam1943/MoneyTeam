@@ -6,10 +6,12 @@ import { useSeason } from '../context/SeasonContext'
 import { useI18n } from '../lib/i18n'
 import { useToast } from '../lib/toast'
 import { useLookups } from '../lib/useLookups'
-import { money } from '../lib/format'
+import { money, lineTotal } from '../lib/format'
 import { exportShopping } from '../lib/export'
 import ShoppingForm from '../components/ShoppingForm'
 import TransactionForm from '../components/TransactionForm'
+import { useTeamScope } from '../context/TeamScopeContext'
+import { TeamScopeBadge } from '../components/TeamScope'
 
 const STATUSES = ['pending_approval', 'approved', 'ordered', 'received', 'cancelled']
 const axis = { fontSize: 12, fill: '#4c5570', fontFamily: 'Space Mono, monospace' }
@@ -18,10 +20,14 @@ const tip = { background: '#fff', border: '1px solid #c6cde0', borderRadius: 8, 
 export default function Shopping() {
   const { t } = useI18n()
   const { canAddShopping, canChangeStatus, canTransact, session } = useAuth()
+  // Anyone who can act on a selection gets tick boxes — buying is not the only
+  // reason to select rows any more.
+  const canSelect = canTransact || canChangeStatus
   const uid = session?.user?.id
   const { activeId, active } = useSeason()
   const toast = useToast()
   const lk = useLookups()
+  const ts = useTeamScope()
   const [rows, setRows] = useState([])
   const [budgets, setBudgets] = useState([])
   const [lines, setLines] = useState([])
@@ -42,7 +48,7 @@ export default function Shopping() {
       const [items, bg, tl] = await withTimeout(Promise.all([
         supabase.from('shopping_items').select('*').eq('season_id', activeId),
         supabase.from('budgets').select('*').eq('season_id', activeId),
-        supabase.from('transaction_lines').select('amount,budget_id,transactions!inner(season_id)').eq('transactions.season_id', activeId),
+        supabase.from('transaction_lines').select('amount,budget_id,transactions!inner(season_id,team_scope)').eq('transactions.season_id', activeId),
       ]))
       if (!items.error) setRows(items.data || [])
       if (!bg.error) setBudgets(bg.data || [])
@@ -72,11 +78,17 @@ export default function Shopping() {
     }
   }, [activeId, uid])
 
-  const enriched = useMemo(() => rows.map((r) => ({
+  // The FRC/FTC checklist is applied here, once — every chart, the table and
+  // the export all read from `enriched`, so none of them can drift out of sync
+  // with what the top bar says is being shown.
+  const enriched = useMemo(() => rows.filter((r) => ts.matches(r.team_scope)).map((r) => ({
     ...r,
     categoryName: lk.categoryName[r.category_id] || '',
     priorityName: lk.levelName[r.priority_level_id] || '',
-  })), [rows, lk.categoryName, lk.levelName])
+  })), [rows, lk.categoryName, lk.levelName, ts])
+
+  // Expense lines carry their scope on the parent transaction.
+  const scopedLines = useMemo(() => lines.filter((l) => ts.matches(l.transactions?.team_scope)), [lines, ts])
 
   const [sort, setSort] = useState({ col: 'priority', dir: 'asc' })
   function toggleSort(col) {
@@ -135,20 +147,20 @@ export default function Shopping() {
   // ALL-TIME: every item ever requested, by category (every status included)
   const byCategoryAll = useMemo(() => {
     const m = {}
-    for (const r of enriched) { const k = groupKey(r.category_id, r.categoryName); m[k] = (m[k] || 0) + (Number(r.est_price) || 0) * (r.quantity || 1) }
+    for (const r of enriched) { const k = groupKey(r.category_id, r.categoryName); m[k] = (m[k] || 0) + lineTotal(r) }
     return Object.entries(m).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
   }, [enriched, categoryGrouping, topAncestorName])
 
   // STILL OUTSTANDING: only items not yet paid for — pending_approval / approved
   const byCategoryOpen = useMemo(() => {
     const m = {}
-    for (const r of open) { const k = groupKey(r.category_id, r.categoryName); m[k] = (m[k] || 0) + (Number(r.est_price) || 0) * (r.quantity || 1) }
+    for (const r of open) { const k = groupKey(r.category_id, r.categoryName); m[k] = (m[k] || 0) + lineTotal(r) }
     return Object.entries(m).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
   }, [open, categoryGrouping, topAncestorName])
 
   const byStatus = useMemo(() => {
     const m = {}
-    for (const r of enriched) { const k = t(r.status); m[k] = (m[k] || 0) + (Number(r.est_price) || 0) * (r.quantity || 1) }
+    for (const r of enriched) { const k = t(r.status); m[k] = (m[k] || 0) + lineTotal(r) }
     return Object.entries(m).map(([name, value]) => ({ name, value }))
   }, [enriched, t])
 
@@ -156,13 +168,13 @@ export default function Shopping() {
   const budgetCat = useMemo(() => Object.fromEntries(budgets.map((b) => [b.id, b.category_id])), [budgets])
   const actualByCategory = useMemo(() => {
     const m = {}
-    for (const l of lines) {
+    for (const l of scopedLines) {
       const catId = budgetCat[l.budget_id]
       const k = groupKey(catId, lk.categoryName[catId])
       m[k] = (m[k] || 0) + Number(l.amount)
     }
     return Object.entries(m).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
-  }, [lines, budgetCat, lk.categoryName, t, categoryGrouping, topAncestorName])
+  }, [scopedLines, budgetCat, lk.categoryName, t, categoryGrouping, topAncestorName])
 
   async function del(id) {
     if (!confirm(t('confirmDelete'))) return
@@ -174,6 +186,20 @@ export default function Shopping() {
     const { error } = await supabase.from('shopping_items').update({ status }).eq('id', id)
     if (error) { toast.error(error.message); return }
     toast.success(t('saved')); load()
+  }
+
+  // Bulk status change. The DB trigger guard_shopping_status already refuses
+  // this for anyone who is not a mentor, so the button is a convenience gate,
+  // not the security boundary.
+  async function bulkStatus(status) {
+    const ids = selectedItems.map((r) => r.id)
+    if (!ids.length) return
+    if (!confirm(t('confirmBulkStatus').replace('{n}', ids.length).replace('{s}', t(status)))) return
+    const { error } = await supabase.from('shopping_items').update({ status }).in('id', ids)
+    if (error) { toast.error(error.message); return }
+    toast.success(t('saved'))
+    clearSelection()
+    load()
   }
 
   function onBought() {
@@ -188,26 +214,41 @@ export default function Shopping() {
   const toggleSel = (id) => setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
   function buyOne(item) { setSelected(new Set([item.id])); setBuyOpen(true) }
 
+  // Selecting rows, then filtering them out of view, used to strand them:
+  // the tick box was gone but the id stayed in the set, so the count kept
+  // climbing with no way to clear it. Selection is now pruned to whatever is
+  // actually on screen, and "clear" is always reachable.
+  const selectAllFiltered = () => setSelected(new Set(filtered.map((r) => r.id)))
+  const clearSelection = () => setSelected(new Set())
+
   const budgetOptions = useMemo(() => budgets.map((b) => ({
     id: b.id,
     label: b.category_id ? (lk.categoryTree.find((c) => c.id === b.category_id)?.path || lk.categoryName[b.category_id] || '—') : t('overall'),
   })), [budgets, lk.categoryTree, lk.categoryName, t])
 
-  const selectedItems = useMemo(() => enriched.filter((r) => selected.has(r.id)), [enriched, selected])
+  const selectedItems = useMemo(() => filtered.filter((r) => selected.has(r.id)), [filtered, selected])
+  const buyableItems = useMemo(
+    () => selectedItems.filter((r) => r.status === 'pending_approval' || r.status === 'approved'),
+    [selectedItems])
+  const allFilteredSelected = filtered.length > 0 && filtered.every((r) => selected.has(r.id))
   const buyPrefill = useMemo(() => {
-    if (!selectedItems.length) return null
-    const vendors = [...new Set(selectedItems.map((i) => i.vendor).filter(Boolean))]
+    if (!buyableItems.length) return null
+    const vendors = [...new Set(buyableItems.map((i) => i.vendor).filter(Boolean))]
+    // If every item being bought carries the same marker, the purchase inherits
+    // it; a mixed basket is a shared purchase.
+    const scopes = [...new Set(buyableItems.map((i) => i.team_scope || 'both'))]
     return {
       type: 'expense',
       vendor: vendors.length === 1 ? vendors[0] : '',
-      lines: selectedItems.map((it) => ({
+      team_scope: scopes.length === 1 ? scopes[0] : 'both',
+      lines: buyableItems.map((it) => ({
         budget_id: budgetFor(it.category_id),
-        amount: it.est_price ? Number(it.est_price) * (it.quantity || 1) : '',
+        amount: it.est_price ? lineTotal(it) : '',
         shopping_item_id: it.id,
         description: it.name,
       })),
     }
-  }, [selectedItems, budgets])
+  }, [buyableItems, budgets])
 
   function doExport() {
     exportShopping(filtered, { seasonName: active?.name })
@@ -283,7 +324,21 @@ export default function Shopping() {
           {lk.levels.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
         </select>
         <div className="spacer" />
-        {canTransact && selected.size > 0 && <button className="btn btn-primary" onClick={() => setBuyOpen(true)}>{t('buySelected')} ({selected.size})</button>}
+        {canSelect && (
+          <button className="btn btn-sm" onClick={allFilteredSelected ? clearSelection : selectAllFiltered}>
+            {allFilteredSelected ? t('selectNone') : t('selectAllFiltered')}
+          </button>
+        )}
+        {canSelect && selectedItems.length > 0 && (
+          <button className="btn btn-sm" onClick={clearSelection}>{t('selectNone')} ({selectedItems.length})</button>
+        )}
+        {canChangeStatus && selectedItems.length > 0 && (
+          <select value="" onChange={(e) => { if (e.target.value) bulkStatus(e.target.value) }}>
+            <option value="">{t('bulkSetStatus')} ({selectedItems.length})</option>
+            {STATUSES.map((st) => <option key={st} value={st}>{t(st)}</option>)}
+          </select>
+        )}
+        {canTransact && buyableItems.length > 0 && <button className="btn btn-primary" onClick={() => setBuyOpen(true)}>{t('buySelected')} ({buyableItems.length})</button>}
         <button className="btn" onClick={doExport}>{t('exportShopping')}</button>
         {canAddShopping && <button className="btn btn-primary" onClick={() => { setEditing(null); setShowForm(true) }}>+ {t('add')}</button>}
       </div>
@@ -295,8 +350,11 @@ export default function Shopping() {
           <table className="data">
             <thead>
               <tr>
-                {canTransact && <th></th>}
-                {th('priority', t('priority'))}{th('name', t('name'))}<th>{t('sku')}</th>{th('category', t('category'))}
+                {canSelect && <th><input type="checkbox" style={{ width: 'auto' }}
+                  checked={allFilteredSelected}
+                  onChange={() => (allFilteredSelected ? clearSelection() : selectAllFiltered())}
+                  title={t('selectAllFiltered')} /></th>}
+                {th('priority', t('priority'))}{th('name', t('name'))}<th>{t('teamScope')}</th><th>{t('sku')}</th>{th('category', t('category'))}
                 {th('vendor', t('vendor'))}{th('est_price', t('estPrice'))}{th('quantity', t('quantity'))}{th('status', t('status'))}
                 <th>{t('url')}</th>{(canAddShopping || canTransact) && <th>{t('actions')}</th>}
               </tr>
@@ -308,9 +366,10 @@ export default function Shopping() {
                 const canBuy = canTransact && (r.status === 'pending_approval' || r.status === 'approved')
                 return (
                   <tr key={r.id} style={done ? { opacity: 0.5, background: 'var(--panel-2)' } : undefined}>
-                    {canTransact && <td>{canBuy && <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleSel(r.id)} style={{ width: 'auto' }} />}</td>}
+                    {canSelect && <td><input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleSel(r.id)} style={{ width: 'auto' }} title={canBuy ? '' : t('notBuyable')} /></td>}
                     <td>{lvl ? <span className="pill" style={{ background: (lvl.color || '#8a8aa0') + '22', color: lvl.color || '#5b6472' }}>{lvl.name}</span> : '—'}</td>
                     <td>{r.name}</td>
+                    <td><TeamScopeBadge scope={r.team_scope} /></td>
                     <td className="mono" style={{ color: 'var(--text-dim)' }}>{r.sku || '—'}</td>
                     <td>{r.categoryName || '—'}</td>
                     <td>{r.vendor || '—'}</td>

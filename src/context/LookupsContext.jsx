@@ -52,7 +52,7 @@ function buildDescendants(cats) {
 // tab switch — and rebuilt all derived objects on every render, which broke the
 // downstream useMemos (new identities each time) and made the UI feel laggy.
 export function LookupsProvider({ children }) {
-  const { session } = useAuth()
+  const { session, isParent } = useAuth()
   const [data, setData] = useState({ accounts: [], categories: [], sources: [], levels: [], vendors: [], templates: [] })
   const [loading, setLoading] = useState(true)
   const loadedFor = useRef(null)
@@ -80,13 +80,13 @@ export function LookupsProvider({ children }) {
   }, [])
 
   useEffect(() => {
-    const uid = session?.user?.id
+    const uid = session?.user?.id || (isParent ? 'guest' : null)
     if (!uid) { setLoading(false); return }
     if (loadedFor.current === uid) return   // already loaded for this user
     loadedFor.current = uid
     setLoading(true)
     load()
-  }, [session?.user?.id, load])
+  }, [session?.user?.id, isParent, load])
 
   const value = useMemo(() => {
     const { accounts, categories, sources, levels, vendors, templates } = data

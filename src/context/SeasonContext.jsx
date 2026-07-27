@@ -5,7 +5,7 @@ import { useAuth } from './AuthContext'
 const SeasonContext = createContext(null)
 
 export function SeasonProvider({ children }) {
-  const { session } = useAuth()
+  const { session, isParent } = useAuth()
   const [seasons, setSeasons] = useState([])
   const [activeId, setActiveId] = useState(() => localStorage.getItem('activeSeason') || null)
   const [loading, setLoading] = useState(true)
@@ -28,13 +28,15 @@ export function SeasonProvider({ children }) {
   // load until something (like editing a season) re-fired the query post-login.
   // Re-runs whenever the logged-in user changes, so login immediately populates.
   useEffect(() => {
-    if (session?.user?.id) {
+  // Guests have no session by design, so data loading keys off "may view"
+  // rather than "is signed in" — otherwise the two parent screens render empty.
+    if (session?.user?.id || isParent) {
       refresh()
     } else {
       setSeasons([])
       setLoading(false)
     }
-  }, [session?.user?.id, refresh])
+  }, [session?.user?.id, isParent, refresh])
 
   useEffect(() => { if (activeId) localStorage.setItem('activeSeason', activeId) }, [activeId])
 

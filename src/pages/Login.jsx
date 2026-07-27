@@ -1,20 +1,10 @@
 import { supabase } from '../lib/supabase'
-import { useState } from 'react'
 import { useI18n } from '../lib/i18n'
+import { useAuth } from '../context/AuthContext'
 
 export default function Login() {
   const { t, toggle, lang } = useI18n()
-  const [err, setErr] = useState('')
-  const [busy, setBusy] = useState(false)
-
-  async function enterAsParent() {
-    setBusy(true); setErr('')
-    const { error } = await supabase.auth.signInAnonymously()
-    setBusy(false)
-    // The most likely failure by far is anonymous sign-ins being switched off
-    // in the Supabase dashboard, so say that rather than echoing a raw error.
-    if (error) setErr(t('guestSignInFailed'))
-  }
+  const { enterGuestMode } = useAuth()
 
   return (
     <div className="center-screen">
@@ -42,11 +32,10 @@ export default function Login() {
           </div>
 
           <button type="button" className="btn" style={{ width: '100%', justifyContent: 'center' }}
-            onClick={enterAsParent} disabled={busy}>
-            {busy ? '…' : t('enterAsParent')}
+            onClick={enterGuestMode}>
+            {t('enterAsParent')}
           </button>
           <p style={{ color: 'var(--text-faint)', fontSize: 12, marginBottom: 0 }}>{t('parentViewHint')}</p>
-          {err && <div className="err">{err}</div>}
         </div>
       </div>
     </div>

@@ -211,11 +211,17 @@ table.data tr:hover td { background: var(--panel-2); }
 /* expense lines: a grid that collapses to stacked fields on narrow screens */
 .line-row {
   display: grid; gap: 8px; margin-bottom: 12px; align-items: start;
-  grid-template-columns: minmax(9rem, 1.2fr) minmax(10rem, 1fr) minmax(10rem, 1.6fr) auto;
+  grid-template-columns:
+    minmax(8rem, 1.1fr) minmax(9rem, 1fr) minmax(5.5rem, auto) minmax(9rem, 1.5fr) auto;
 }
-@media (max-width: 720px) {
-  .line-row { grid-template-columns: 1fr auto; }
+.line-scope { min-width: 5.5rem; }
+@media (max-width: 860px) {
+  .line-row { grid-template-columns: 1fr 1fr auto; }
   .line-row > .line-desc { grid-column: 1 / -1; }
+}
+@media (max-width: 560px) {
+  .line-row { grid-template-columns: 1fr auto; }
+  .line-row > .line-desc, .line-row > .line-scope { grid-column: 1 / -1; }
 }
 
 /* the modal itself should track the viewport, not a fixed 760px */

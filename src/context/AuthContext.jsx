@@ -3,7 +3,21 @@ import { supabase, withTimeout } from '../lib/supabase'
 
 const AuthContext = createContext(null)
 
+const GUEST_KEY = 'guestMode'
+
 export function AuthProvider({ children }) {
+  const [guestMode, setGuestMode] = useState(() => {
+    try { return localStorage.getItem(GUEST_KEY) === '1' } catch { return false }
+  })
+  const enterGuestMode = () => {
+    try { localStorage.setItem(GUEST_KEY, '1') } catch { /* private mode */ }
+    setGuestMode(true)
+  }
+  const exitGuestMode = () => {
+    try { localStorage.removeItem(GUEST_KEY) } catch { /* private mode */ }
+    setGuestMode(false)
+  }
+
   const [session, setSession] = useState(null)
   const [member, setMember] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -63,10 +77,11 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
-  // An anonymous session is a parent/guest: read-only, two screens, no members
-  // row and never any write. Derived from the JWT rather than a stored role,
-  // so there is no row anyone could edit to escalate it.
-  const isGuest = !!session?.user?.is_anonymous
+  // Parent/guest mode is a purely local flag — there is deliberately NO sign-in
+  // behind it. The browser just talks to PostgREST as the built-in anon role,
+  // which is why a parent visit creates no auth.users row and costs no MAU.
+  // A real session always wins over the flag.
+  const isGuest = !session && guestMode
   const role = isGuest ? 'parent' : (member?.role || null)
   const isMentor = role === 'mentor'
   const isStudent = role === 'student'
@@ -80,6 +95,8 @@ export function AuthProvider({ children }) {
     isStudent,
     isParent,
     isGuest,
+    enterGuestMode,
+    exitGuestMode,
     // permission gates (mentor / student / viewer model)
     canTransact: isMentor,                       // income / expense / transfer / buy / delete tx
     canBudget: isMentor || isStudent,            // add & edit budgets
@@ -87,7 +104,9 @@ export function AuthProvider({ children }) {
     canChangeStatus: isMentor,                   // change a shopping item's status
     canSettings: isMentor,                       // manage config tables
     canEdit: isMentor,                           // legacy alias -> mentor only
-    signOut: () => supabase.auth.signOut(),
+    // Leaving guest mode is a sign-out from the user's point of view even
+    // though there was never a session to end.
+    signOut: () => { exitGuestMode(); return supabase.auth.signOut() },
   }
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

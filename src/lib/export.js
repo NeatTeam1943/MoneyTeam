@@ -156,6 +156,9 @@ export function exportReport(meta) {
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(named(meta.byCategory)), 'By category')
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(named(meta.bySource)), 'By source')
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(named(meta.byAccount)), 'By account')
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(named(meta.byVendor)), 'By vendor')
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(named(meta.byScope)), 'By program')
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(meta.cumulative || []), 'Cumulative')
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(meta.topExpenses || []), 'Top expenses')
 
   const stamp = new Date().toISOString().slice(0, 10)

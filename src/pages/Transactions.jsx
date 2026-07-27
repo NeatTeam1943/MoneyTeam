@@ -16,7 +16,7 @@ import ReceiptPreview from '../components/ReceiptPreview'
 export default function Transactions() {
   const { t } = useI18n()
   const { canTransact, session, isParent } = useAuth()
-  const uid = session?.user?.id
+  const uid = session?.user?.id || (isParent ? 'guest' : null)
   const { activeId, active } = useSeason()
   const toast = useToast()
   const lk = useLookups()
@@ -52,7 +52,7 @@ export default function Transactions() {
         supabase.from(isParent ? 'transactions_guest' : 'transactions_view').select('*').eq('season_id', activeId),
         supabase.from('account_balances').select('*'),
         supabase.from('budgets').select('*').eq('season_id', activeId),
-        supabase.from('transaction_lines').select('transaction_id,budget_id,amount,transactions!inner(season_id)').eq('transactions.season_id', activeId),
+        supabase.from('transaction_lines').select('transaction_id,budget_id,amount,team_scope,description,transactions!inner(season_id)').eq('transactions.season_id', activeId),
       ]))
       if (!tx.error) setRows(tx.data || [])      // keep prior data if a query fails
       if (!bal.error) setBalances(bal.data || [])
@@ -69,7 +69,9 @@ export default function Transactions() {
     }
   }
   useEffect(() => {
-    if (session?.user?.id) load()
+  // Guests have no session by design, so data loading keys off "may view"
+  // rather than "is signed in" — otherwise the two parent screens render empty.
+    if (uid) load()
     else setLoading(false)   // not signed in yet — don't sit on a spinner forever
   }, [activeId, uid])
 
@@ -79,7 +81,7 @@ export default function Transactions() {
   // whatever it last managed to show. Safe because load() above only shows a
   // spinner when there's no data yet; a returning-user refresh is silent.
   useEffect(() => {
-    const onFocus = () => { if (activeId && session?.user?.id) load() }
+    const onFocus = () => { if (activeId && uid) load() }
     const onVis = () => { if (!document.hidden) onFocus() }
     window.addEventListener('focus', onFocus)
     document.addEventListener('visibilitychange', onVis)
@@ -114,6 +116,20 @@ export default function Transactions() {
   // category lives on its lines' budgets (a split purchase can touch
   // several), not on the transaction row itself; in_kind is the one type
   // that does carry category_id directly.
+  // A purchase can mix programs, so the row shows every marking its lines
+  // actually carry rather than collapsing the lot to "shared".
+  const linesByTx = useMemo(() => {
+    const m = {}
+    for (const l of lines) (m[l.transaction_id] = m[l.transaction_id] || []).push(l)
+    return m
+  }, [lines])
+
+  const scopesOf = (r) => {
+    const own = linesByTx[r.id] || []
+    const distinct = [...new Set(own.map((l) => l.team_scope || 'both'))]
+    return distinct.length ? distinct : [r.team_scope || 'both']
+  }
+
   const txCategoryIds = useMemo(() => {
     const m = {}
     for (const r of rows) {
@@ -127,7 +143,7 @@ export default function Transactions() {
 
   const filtered = useMemo(() => {
     let out = enriched.filter((r) => {
-      if (!ts.matches(r.team_scope)) return false
+      if (!ts.matches(r.team_scope) && !scopesOf(r).some((sc) => ts.matches(sc))) return false
       if (fType && r.type !== fType) return false
       if (fAccount && r.account_id !== fAccount && r.to_account_id !== fAccount) return false
       if (fCategory) {
@@ -244,7 +260,9 @@ export default function Transactions() {
               <tr key={r.id}>
                 <td className="mono">{fmtDate(r.date)}</td>
                 <td><span className={typePill[r.type]}>{t(r.type)}</span></td>
-                <td><TeamScopeBadge scope={r.team_scope} /></td>
+                <td style={{ whiteSpace: 'nowrap' }}>
+                  {scopesOf(r).map((sc) => <TeamScopeBadge key={sc} scope={sc} />)}
+                </td>
                 <td className="num">{money(r.amount)}</td>
                 <td>{r.type === 'transfer' ? `${r.accountName} → ${r.toAccountName}` : r.accountName || '—'}</td>
                 <td>{r.type === 'expense' ? (r.budgetName || '—') : (r.categoryName || r.sourceName || '—')}</td>

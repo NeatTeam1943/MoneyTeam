@@ -42,7 +42,9 @@ export default function App() {
     )
   }
 
-  if (!session) return <Login />
+  // Guest mode has no session by design — that is the whole point — so it must
+  // be checked before the login gate.
+  if (!session && !isParent) return <Login />
 
   return (
     <Layout>

@@ -3,44 +3,79 @@ import { supabase } from '../lib/supabase'
 import { useI18n } from '../lib/i18n'
 import Modal from './Modal'
 
-const IMAGE_EXT = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'avif', 'svg']
+const IMAGE_EXT = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'avif', 'svg', 'heic', 'heif']
+
+// A stored path should be bucket-relative. Older uploads occasionally kept the
+// bucket name on the front, which makes the signed URL resolve to
+// receipts/receipts/... and 404 — cheap to defend against.
+export const normalisePath = (p) => String(p || '').replace(/^\/+/, '').replace(/^receipts\//, '')
 
 export const extOf = (path) => {
   const clean = String(path || '').split('?')[0]
   const dot = clean.lastIndexOf('.')
   return dot === -1 ? '' : clean.slice(dot + 1).toLowerCase()
 }
-export const kindOf = (path) => {
+
+export const kindOf = (path, contentType) => {
+  if (contentType) {
+    if (contentType.startsWith('image/')) return 'image'
+    if (contentType === 'application/pdf') return 'pdf'
+    // storage returns JSON when it is reporting an error, never for a receipt
+    if (contentType.includes('json')) return 'other'
+  }
   const e = extOf(path)
   if (IMAGE_EXT.includes(e)) return 'image'
   if (e === 'pdf') return 'pdf'
   return 'other'
 }
 
-// Opens a receipt inline instead of punting to a new tab. Images render
-// directly; PDFs go in an <iframe>, which every current desktop browser draws
-// with its built-in viewer. Anything else — and the live bucket really does
-// contain a few stray .jsx/.md uploads — falls back to a plain download link
-// rather than an empty grey box.
 export default function ReceiptPreview({ path, number, onClose }) {
   const { t } = useI18n()
+  const clean = normalisePath(path)
   const [url, setUrl] = useState(null)
   const [err, setErr] = useState('')
-  const kind = kindOf(path)
+  const [diag, setDiag] = useState(null)     // { status, type }
+  const [failed, setFailed] = useState(false)
 
   useEffect(() => {
     let alive = true
-    // 10 minutes: long enough to actually read a multi-page PDF, short enough
-    // that a copied link is not a lasting leak.
-    supabase.storage.from('receipts').createSignedUrl(path, 600).then(({ data, error }) => {
+    setUrl(null); setErr(''); setDiag(null); setFailed(false)
+
+    supabase.storage.from('receipts').createSignedUrl(clean, 600).then(async ({ data, error }) => {
       if (!alive) return
-      if (error || !data?.signedUrl) setErr(error?.message || t('receiptLoadFailed'))
-      else setUrl(data.signedUrl)
+      if (error || !data?.signedUrl) { setErr(error?.message || t('receiptLoadFailed')); return }
+      setUrl(data.signedUrl)
+      // A signed URL is issued even for an object that does not exist, so the
+      // URL succeeding proves nothing. Ask storage what is actually there —
+      // that turns a silent broken-image icon into a status code we can act on.
+      try {
+        const res = await fetch(data.signedUrl, { method: 'GET', headers: { Range: 'bytes=0-0' } })
+        if (!alive) return
+        const info = { status: res.status, type: res.headers.get('content-type') || '' }
+        setDiag(info)
+        if (!res.ok) setFailed(true)
+      } catch {
+        if (alive) { setDiag({ status: 0, type: '' }); setFailed(true) }
+      }
     })
     return () => { alive = false }
-  }, [path, t])
+  }, [clean, t])
 
-  const filename = String(path || '').split('/').pop()
+  const filename = clean.split('/').pop()
+  const kind = kindOf(clean, diag?.type)
+
+  const diagnostics = (
+    <div className="empty-cta" style={{ textAlign: 'start' }}>
+      <p style={{ fontWeight: 700, marginTop: 0 }}>{t('previewFailed')}</p>
+      <p style={{ color: 'var(--text-dim)', fontSize: 13 }}>{t('previewDiag')}</p>
+      <ul className="mono" style={{ fontSize: 12, color: 'var(--text-faint)', paddingInlineStart: 18, lineHeight: 1.9 }}>
+        <li>{t('previewStatus')}: {diag ? (diag.status || 'network error') : '—'}</li>
+        <li>{t('previewType')}: {diag?.type || '—'}</li>
+        <li style={{ wordBreak: 'break-all' }}>{t('previewPath')}: {clean}</li>
+      </ul>
+      {url && <a className="btn btn-primary" href={url} target="_blank" rel="noreferrer">{t('openInNewTab')} ↗</a>}
+    </div>
+  )
 
   return (
     <Modal
@@ -53,24 +88,34 @@ export default function ReceiptPreview({ path, number, onClose }) {
         <button className="btn btn-ghost" onClick={onClose}>{t('close')}</button>
       </>}
     >
-      <div style={{ minHeight: 200 }}>
+      <div style={{ minHeight: '12rem' }}>
         {err && <div className="err">{err}</div>}
         {!url && !err && <div className="empty">{t('loading')}</div>}
-        {url && kind === 'image' && (
-          <img src={url} alt={filename}
+
+        {url && failed && diagnostics}
+
+        {url && !failed && kind === 'image' && (
+          // alt is empty on purpose: a failed <img> would otherwise print the
+          // filename next to a broken icon, which is what made this look like
+          // the preview had rendered something.
+          <img src={url} alt="" onError={() => setFailed(true)}
             style={{ maxWidth: '100%', maxHeight: '68vh', display: 'block', margin: '0 auto', borderRadius: 8 }} />
         )}
-        {url && kind === 'pdf' && (
-          <iframe src={url} title={filename}
-            style={{ width: '100%', height: '68vh', border: '1px solid var(--line)', borderRadius: 8 }} />
+        {url && !failed && kind === 'pdf' && (
+          <object data={url} type="application/pdf"
+            style={{ width: '100%', height: '68vh', border: '1px solid var(--line)', borderRadius: 8 }}>
+            {/* iOS Safari refuses to render PDFs inline in an object/iframe */}
+            {diagnostics}
+          </object>
         )}
-        {url && kind === 'other' && (
+        {url && !failed && kind === 'other' && (
           <div className="empty-cta">
-            <p>{t('noInlinePreview')} <span className="mono">.{extOf(path) || '?'}</span></p>
+            <p>{t('noInlinePreview')} <span className="mono">.{extOf(clean) || '?'}</span></p>
             <a className="btn btn-primary" href={url} target="_blank" rel="noreferrer">{t('openInNewTab')} ↗</a>
           </div>
         )}
-        <p className="mono" style={{ color: 'var(--text-faint)', fontSize: 12, marginBottom: 0, wordBreak: 'break-all' }}>{filename}</p>
+
+        <p className="mono" style={{ color: 'var(--text-faint)', fontSize: 12, margin: '10px 0 0', wordBreak: 'break-all' }}>{filename}</p>
       </div>
     </Modal>
   )

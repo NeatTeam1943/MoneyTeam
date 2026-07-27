@@ -97,6 +97,7 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
         fx_currency: l.fx?.currency || null,
         fx_amount: l.fx?.amount ? Number(l.fx.amount) : null,
         fx_rate: l.fx?.rate ? Number(l.fx.rate) : null,
+        team_scope: l.team_scope || 'both',
       }))
       const { data, error } = await supabase.rpc('save_expense', {
         p_tx_id: editing?.id || null,
@@ -108,7 +109,9 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
         p_receipt_url: receipt_url,
         p_lines,
         p_payer_name: f.payer_name || null,
-        p_team_scope: f.team_scope || 'both',
+        // null lets the database derive it from the lines: uniform lines set the
+        // header, a mixed basket becomes 'shared'.
+        p_team_scope: null,
       })
       if (error) throw error
       onSaved({ id: data })
@@ -171,10 +174,12 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
         </div>
       </div>
 
-      <div className="field">
-        <label>{t('teamScope')}</label>
-        <TeamScopePicker value={f.team_scope} onChange={(v) => setF({ ...f, team_scope: v })} />
-      </div>
+      {!isExpense && (
+        <div className="field">
+          <label>{t('teamScope')}</label>
+          <TeamScopePicker value={f.team_scope} onChange={(v) => setF({ ...f, team_scope: v })} />
+        </div>
+      )}
 
       <div className="grid-2">
         <div className="field"><label>{t('date')}</label><input type="date" value={f.date} onChange={set('date')} /></div>
@@ -257,6 +262,12 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
                   <CurrencyAmountInput compact value={l.amount} onChange={(v) => setLine(i, 'amount', v)}
                     fx={l.fx} onFxChange={(fxVal) => setLine(i, 'fx', fxVal)} placeholder="₪" />
                 </div>
+                <select className="line-scope" value={l.team_scope || 'both'} title={t('lineScope')}
+                  onChange={(e) => setLine(i, 'team_scope', e.target.value)}>
+                  <option value="both">{t('scope_both')}</option>
+                  <option value="frc">{t('scope_frc')}</option>
+                  <option value="ftc">{t('scope_ftc')}</option>
+                </select>
                 <input className="line-desc" placeholder={t('description')} value={l.description}
                   onChange={(e) => setLine(i, 'description', e.target.value)} />
                 <button className="btn btn-ghost btn-sm btn-danger" onClick={() => removeLine(i)}>✕</button>
@@ -293,11 +304,12 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
   )
 }
 
-const emptyLine = () => ({ budget_id: '', amount: '', description: '', shopping_item_id: '', fx: null })
+const emptyLine = () => ({ budget_id: '', amount: '', description: '', shopping_item_id: '', fx: null, team_scope: 'both' })
 const normLine = (l) => ({
   budget_id: l.budget_id || '',
   amount: l.amount ?? '',
   description: l.description || '',
   shopping_item_id: l.shopping_item_id || '',
   fx: l.fx_currency ? { currency: l.fx_currency, amount: l.fx_amount, rate: l.fx_rate } : null,
+  team_scope: l.team_scope || 'both',
 })

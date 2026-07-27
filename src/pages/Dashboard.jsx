@@ -18,7 +18,7 @@ export default function Dashboard() {
   const { t } = useI18n()
   const { activeId, active } = useSeason()
   const { session, isParent } = useAuth()
-  const uid = session?.user?.id
+  const uid = session?.user?.id || (isParent ? 'guest' : null)
   const { categoryName, sourceName, categories } = useLookups()
   const ts = useTeamScope()
   const [allRows, setAllRows] = useState([])
@@ -28,7 +28,9 @@ export default function Dashboard() {
   const [allLines, setAllLines] = useState([])
 
   function loadDashboard() {
-    if (!activeId || !session?.user?.id) return
+  // Guests have no session by design, so data loading keys off "may view"
+  // rather than "is signed in" — otherwise the two parent screens render empty.
+    if (!activeId || !uid) return
     // Guests read the column-censored views and skip the three sources they
     // have no grant on. Firing them anyway would just log RLS errors and draw
     // empty charts, which reads as "the team spent nothing" rather than

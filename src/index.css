@@ -27,6 +27,18 @@
   --ok: #12a150;
   --danger: #e0384c;
 
+  /* Program identity. FRC is the main team — blue with an orange accent, the
+     same pair the whole app is built on. FTC is red and white.
+     NOTE the deliberate gap between --ftc and --danger: FTC's red must not be
+     mistaken for the over-budget red. They are kept far enough apart in tone,
+     and the badges differ in shape too (solid fill for a program, tinted text
+     for a warning), so a red pill never reads as "overspent". */
+  --frc: #1100ff;
+  --frc-accent: #ff9100;
+  --ftc: #c8102e;
+  --ftc-accent: #ffffff;
+  --shared: #5b6472;
+
   --font-display: 'Space Grotesk', 'Assistant', system-ui, sans-serif;
   --font-body: 'Assistant', system-ui, sans-serif;
   --font-mono: 'Space Mono', ui-monospace, monospace;

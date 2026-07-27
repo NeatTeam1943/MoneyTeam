@@ -32,6 +32,7 @@ export default function Shopping() {
   const [budgets, setBudgets] = useState([])
   const [lines, setLines] = useState([])
   const [loading, setLoading] = useState(true)
+  const [q, setQ] = useState('')
   const [editing, setEditing] = useState(null)
   const [showForm, setShowForm] = useState(false)
   const [selected, setSelected] = useState(() => new Set())
@@ -99,7 +100,12 @@ export default function Shopping() {
   )
 
   const filtered = useMemo(() => {
-    const out = enriched.filter((r) => (!fStatus || r.status === fStatus) && (!fPriority || r.priority_level_id === fPriority))
+    // Free-text search across everything you might actually remember about an
+    // item — its name, part number, supplier, category or notes.
+    const needle = q.trim().toLowerCase()
+    const hit = (r) => !needle || [r.name, r.sku, r.vendor, r.categoryName, r.priorityName, r.notes, r.description]
+      .some((v) => String(v || '').toLowerCase().includes(needle))
+    const out = enriched.filter((r) => hit(r) && (!fStatus || r.status === fStatus) && (!fPriority || r.priority_level_id === fPriority))
     const { col, dir } = sort
     const mul = dir === 'asc' ? 1 : -1
     const val = (r) => {
@@ -119,7 +125,7 @@ export default function Shopping() {
       return 0
     })
     return out
-  }, [enriched, fStatus, fPriority, rankOf, sort, t])
+  }, [enriched, fStatus, fPriority, q, rankOf, sort, t])
 
   // "requested" = still wanted (not received / cancelled)
   const open = useMemo(() => enriched.filter((r) => r.status === 'pending_approval' || r.status === 'approved'), [enriched])
@@ -223,7 +229,11 @@ export default function Shopping() {
 
   const budgetOptions = useMemo(() => budgets.map((b) => ({
     id: b.id,
-    label: b.category_id ? (lk.categoryTree.find((c) => c.id === b.category_id)?.path || lk.categoryName[b.category_id] || '—') : t('overall'),
+    team_scope: b.team_scope || 'both',
+    // The program is part of the budget's identity now — two categories with
+    // the same name can be different pots, so the label has to say which.
+    label: (b.category_id ? (lk.categoryTree.find((c) => c.id === b.category_id)?.path || lk.categoryName[b.category_id] || '—') : t('overall'))
+      + ((b.team_scope && b.team_scope !== 'both') ? ` · ${b.team_scope.toUpperCase()}` : ''),
   })), [budgets, lk.categoryTree, lk.categoryName, t])
 
   const selectedItems = useMemo(() => filtered.filter((r) => selected.has(r.id)), [filtered, selected])
@@ -324,6 +334,9 @@ export default function Shopping() {
           {lk.levels.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
         </select>
         <div className="spacer" />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('searchShopping')}
+          style={{ flex: '1 1 14rem', minWidth: '10rem' }} />
+        {q && <button className="btn btn-ghost btn-sm" onClick={() => setQ('')}>✕</button>}
         {canSelect && (
           <button className="btn btn-sm" onClick={allFilteredSelected ? clearSelection : selectAllFiltered}>
             {allFilteredSelected ? t('selectNone') : t('selectAllFiltered')}

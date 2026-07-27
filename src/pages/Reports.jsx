@@ -8,14 +8,18 @@ import { useI18n } from '../lib/i18n'
 import { useToast } from '../lib/toast'
 import { useLookups } from '../lib/useLookups'
 import { useTeamScope } from '../context/TeamScopeContext'
+import { linesByTransaction, attributableAmount, touchesScope, spendByScope } from '../lib/teamScope'
+import ScopeNotice from '../components/ScopeNotice'
 import { money, fmtDate, monthKey, typeColor, amountColor, signedColor } from '../lib/format'
 import { exportReport } from '../lib/export'
 
 const axis = { fontSize: 12, fill: '#4c5570', fontFamily: 'Space Mono, monospace' }
 const tip = { background: '#fff', border: '1px solid #c6cde0', borderRadius: 8, fontSize: 13, color: '#151a2b' }
 const iso = (d) => d.toISOString().slice(0, 10)
-const SCOPE_FILL = { frc: '#1100ff', ftc: '#ff9100', both: '#5b6472' }
-const CATFILL = ['#1100ff', '#ff9100', '#00a86b', '#c026d3', '#0891b2', '#e0384c', '#7c3aed', '#65a30d']
+const SCOPE_FILL = { frc: '#1100ff', ftc: '#c8102e', both: '#5b6472' }
+// #e0384c dropped: too close to both --danger and the FTC red to be a
+// neutral category colour.
+const CATFILL = ['#1100ff', '#ff9100', '#00a86b', '#c026d3', '#0891b2', '#0f766e', '#7c3aed', '#65a30d']
 
 // Presets are computed from today, not from the season, so "this month" means
 // this month even when you are looking at a past season. Picking a preset that
@@ -67,7 +71,7 @@ export default function Reports() {
     try {
       const [tx, tl, bg] = await withTimeout(Promise.all([
         supabase.from('transactions').select('*').eq('season_id', activeId),
-        supabase.from('transaction_lines').select('amount,budget_id,description,transactions!inner(season_id,date,team_scope)').eq('transactions.season_id', activeId),
+        supabase.from('transaction_lines').select('transaction_id,amount,budget_id,description,team_scope,transactions!inner(season_id,date,team_scope)').eq('transactions.season_id', activeId),
         supabase.from('budgets').select('*').eq('season_id', activeId),
       ]))
       if (!tx.error) setRows(tx.data || [])
@@ -81,12 +85,18 @@ export default function Reports() {
 
   const inPeriod = (d) => (!from || d >= from) && (!to || d <= to)
 
+  const byTx = useMemo(() => linesByTransaction(lines), [lines])
+
+  // Amounts are re-attributed line by line, so a receipt that mixes FRC, FTC
+  // and shared items contributes only its matching share to a filtered view.
   const scoped = useMemo(
-    () => rows.filter((r) => ts.matches(r.team_scope) && inPeriod(r.date)),
-    [rows, ts, from, to])   // eslint-disable-line react-hooks/exhaustive-deps
+    () => rows.filter((r) => inPeriod(r.date) && touchesScope(r, byTx, ts))
+      .map((r) => ({ ...r, amount: attributableAmount(r, byTx, ts) }))
+      .filter((r) => r.amount > 0 || ts.all),
+    [rows, byTx, ts, from, to])   // eslint-disable-line react-hooks/exhaustive-deps
 
   const scopedLines = useMemo(
-    () => lines.filter((l) => ts.matches(l.transactions?.team_scope) && inPeriod(l.transactions?.date)),
+    () => lines.filter((l) => ts.matches(l.team_scope) && inPeriod(l.transactions?.date)),
     [lines, ts, from, to])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const totals = useMemo(() => {
@@ -96,8 +106,10 @@ export default function Reports() {
       else if (r.type === 'expense') expense += Number(r.amount)
       else if (r.type === 'in_kind') inkind += Number(r.amount)
     }
-    return { income, expense, inkind, net: income - expense }
-  }, [scoped])
+    // See Dashboard: net is not a real quantity per program while income is
+    // shared and unsplit.
+    return { income, expense, inkind, net: ts.all ? income - expense : null }
+  }, [scoped, ts])
 
   const byMonth = useMemo(() => {
     const m = {}
@@ -169,14 +181,14 @@ export default function Reports() {
       .sort((a, b) => b.value - a.value).slice(0, 10)
   }, [scoped, t])
 
+  // Counts each LINE under its own marking, so a mixed receipt is split three
+  // ways instead of being dumped entirely into "shared".
   const byScope = useMemo(() => {
-    const m = { frc: 0, ftc: 0, both: 0 }
-    for (const r of scoped) {
-      if (r.type !== 'expense') continue
-      m[r.team_scope || 'both'] += Number(r.amount)
-    }
-    return Object.entries(m).filter(([, v]) => v > 0).map(([k, value]) => ({ key: k, name: t('scope_' + k), value }))
-  }, [scoped, t])
+    const inPeriodTx = rows.filter((r) => inPeriod(r.date))
+    const m = spendByScope(inPeriodTx, byTx)
+    return Object.entries(m).filter(([, v]) => v > 0)
+      .map(([k, value]) => ({ key: k, name: t('scope_' + k), value }))
+  }, [rows, byTx, t, from, to])   // eslint-disable-line react-hooks/exhaustive-deps
 
   const expenseCount = scoped.filter((r) => r.type === 'expense').length
 
@@ -204,6 +216,7 @@ export default function Reports() {
 
   return (
     <div>
+      <ScopeNotice />
       <div className="toolbar">
         <div className="tabs" style={{ marginBottom: 0 }}>
           {presets.map((p) => (
@@ -219,7 +232,8 @@ export default function Reports() {
       <div className="stats">
         <Stat k={t('totalIncome')} v={money(totals.income)} c="var(--in)" />
         <Stat k={t('totalExpense')} v={money(totals.expense)} c="var(--out)" />
-        <Stat k={t('net')} v={money(totals.net)} c={signedColor(totals.net)} />
+        <Stat k={t('net')} v={totals.net === null ? '—' : money(totals.net)}
+          c={totals.net === null ? 'var(--text-faint)' : signedColor(totals.net)} />
         <Stat k={t('totalInKind')} v={money(totals.inkind)} c="var(--inkind)" />
         <Stat k={t('txCount')} v={String(scoped.length)} c="var(--text)" />
         <Stat k={t('avgExpense')} v={expenseCount ? money(totals.expense / expenseCount) : '—'} c="var(--out)" />

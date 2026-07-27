@@ -10,6 +10,8 @@ import { useI18n } from '../lib/i18n'
 import { useLookups } from '../lib/useLookups'
 import { money, monthKey, typeColor, amountColor } from '../lib/format'
 import { useTeamScope } from '../context/TeamScopeContext'
+import { linesByTransaction, attributableAmount, touchesScope } from '../lib/teamScope'
+import ScopeNotice from '../components/ScopeNotice'
 
 const axis = { fontSize: 12, fill: '#4c5570', fontFamily: 'Space Mono, monospace' }
 const CATCOLORS = ['#ff9100', '#4d63ff', '#b06bff', '#35c26b', '#ff4d5e', '#ffc14d', '#7aa0ff', '#d98aff']
@@ -42,7 +44,7 @@ export default function Dashboard() {
     if (isParent) return
     supabase.from('budgets').select('*').eq('season_id', activeId)
       .then(({ data, error }) => { if (!error) setBudgets(data || []) })
-    supabase.from('transaction_lines').select('amount,budget_id,transactions!inner(season_id,team_scope)').eq('transactions.season_id', activeId)
+    supabase.from('transaction_lines').select('transaction_id,amount,budget_id,team_scope,transactions!inner(season_id,team_scope)').eq('transactions.season_id', activeId)
       .then(({ data, error }) => { if (!error) setAllLines(data || []) })
     // shopping items still waiting to be bought: not yet linked to a purchase
     // and not cancelled/received.
@@ -69,8 +71,15 @@ export default function Dashboard() {
   // One place where the top-bar FRC/FTC checklist is applied, so every stat,
   // chart and total below is filtered consistently — nothing can be "filtered"
   // in one panel and not another.
-  const rows  = useMemo(() => allRows.filter((r) => ts.matches(r.team_scope)), [allRows, ts])
-  const lines = useMemo(() => allLines.filter((l) => ts.matches(l.transactions?.team_scope)), [allLines, ts])
+  const byTx = useMemo(() => linesByTransaction(allLines), [allLines])
+  // A mixed purchase is listed when it touches the ticked programs, but only
+  // the matching LINES count toward the money — see src/lib/teamScope.js.
+  const rows = useMemo(() => allRows
+    .filter((r) => touchesScope(r, byTx, ts))
+    .map((r) => ({ ...r, amount: attributableAmount(r, byTx, ts) }))
+    .filter((r) => r.amount > 0 || ts.all),
+  [allRows, byTx, ts])
+  const lines = useMemo(() => allLines.filter((l) => ts.matches(l.team_scope)), [allLines, ts])
   const waiting = useMemo(() => waitingRows.filter(
     (s) => !s.transaction_id && s.status !== 'cancelled' && s.status !== 'received' && ts.matches(s.team_scope)
   ).length, [waitingRows, ts])
@@ -82,17 +91,31 @@ export default function Dashboard() {
       else if (r.type === 'expense') expense += Number(r.amount)
       else if (r.type === 'in_kind') inkind += Number(r.amount)
     }
-    return { income, expense, inkind, net: income - expense }
-  }, [rows])
+    // Net is deliberately unavailable under a partial filter. Income and bank
+    // balances are shared and are not split by program, so income arrives in
+    // full while expenses are narrowed — subtracting one from the other would
+    // produce a confidently wrong, and always flattering, number.
+    return { income, expense, inkind, net: ts.all ? income - expense : null }
+  }, [rows, ts])
 
   // Over-budget vs the season's total budget. Prefer the "Overall" budget row
   // (category_id = null); if none set, fall back to the sum of category budgets.
+  // This compared program-FILTERED spend against UNFILTERED budgets, so under
+  // a single-program filter it measured one program's spending against both
+  // programs' money and reported almost no overspend. Both sides now agree:
+  // budgets are narrowed to the programs on screen, and the spend counted
+  // against them is never program-filtered — a shared pot is drained by
+  // whoever drains it.
   const overBudget = useMemo(() => {
-    const spend = rows.reduce((s, r) => s + (r.type === 'expense' ? Number(r.amount) : 0), 0)
-    const overall = budgets.find((b) => !b.category_id)
-    const total = overall ? Number(overall.amount) : budgets.reduce((s, b) => s + Number(b.amount), 0)
+    const inScopeBudgets = budgets.filter((b) => ts.matches(b.team_scope))
+    const overall = inScopeBudgets.find((b) => !b.category_id)
+    const total = overall ? Number(overall.amount) : inScopeBudgets.reduce((s, b) => s + Number(b.amount), 0)
+    const budgetIds = new Set(inScopeBudgets.map((b) => b.id))
+    const spend = (overall && ts.all)
+      ? allRows.reduce((s, r) => s + (r.type === 'expense' ? Number(r.amount) : 0), 0)
+      : allLines.reduce((s, l) => s + (budgetIds.has(l.budget_id) ? Number(l.amount) : 0), 0)
     return { hasBudget: total > 0, over: Math.max(0, spend - total) }
-  }, [rows, budgets])
+  }, [allRows, allLines, budgets, ts])
 
   const byMonth = useMemo(() => {
     const m = {}
@@ -133,10 +156,12 @@ export default function Dashboard() {
 
   return (
     <div>
+      <ScopeNotice />
       <div className="stats">
         <Stat k={t('totalIncome')} v={money(totals.income)} c="var(--in)" />
         <Stat k={t('totalExpense')} v={money(totals.expense)} c="var(--out)" />
-        <Stat k={t('net')} v={money(totals.net)} c={totals.net >= 0 ? 'var(--ok)' : 'var(--danger)'} />
+        <Stat k={t('net')} v={totals.net === null ? '—' : money(totals.net)}
+          c={totals.net === null ? 'var(--text-faint)' : (totals.net >= 0 ? 'var(--ok)' : 'var(--danger)')} />
         {!isParent && <Stat k={t('overBudget')} v={overBudget.hasBudget ? money(overBudget.over) : '—'} c={overBudget.over > 0 ? 'var(--danger)' : 'var(--ok)'} />}
         {!isParent && <Stat k={t('waitingToBuy')} v={String(waiting)} c="var(--out)" />}
       </div>

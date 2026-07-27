@@ -67,6 +67,23 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
     setF((prev) => (prev.description === autoDescription ? prev : { ...prev, description: autoDescription }))
   }, [autoDescription, descMode, isExpense])
 
+  // Mirrors guard_line_budget_scope() in the database: only two genuinely
+  // opposed programs are refused; anything involving 'shared' is fine.
+  const budgetAllowed = (b, lineScope) => {
+    const bs = b.team_scope || 'both'
+    const ls = lineScope || 'both'
+    return bs === 'both' || ls === 'both' || bs === ls
+  }
+
+  // Changing a line's program can strand a budget it may no longer use.
+  const setLineScope = (i, scope) => setLines(lines.map((l, idx) => {
+    if (idx !== i) return l
+    const next = { ...l, team_scope: scope }
+    const b = budgets.find((x) => x.id === l.budget_id)
+    if (b && !budgetAllowed(b, scope)) next.budget_id = ''
+    return next
+  }))
+
   const total = lines.reduce((s, l) => s + (Number(l.amount) || 0), 0)
   const setLine = (i, k, v) => setLines(lines.map((l, idx) => idx === i ? { ...l, [k]: v } : l))
   const addLine = () => setLines([...lines, emptyLine()])
@@ -254,16 +271,21 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
             <label>{t('lines')}</label>
             {lines.map((l, i) => (
               <div key={i} className="line-row">
+                {/* The database refuses a cross-program charge outright
+                    (migration 20), so offering one here would only produce a
+                    save error later. Shared budgets always qualify. */}
                 <select value={l.budget_id} onChange={(e) => setLine(i, 'budget_id', e.target.value)}>
                   <option value="">{t('none')}</option>
-                  {budgets.map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}
+                  {budgets
+                    .filter((b) => budgetAllowed(b, l.team_scope))
+                    .map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}
                 </select>
                 <div>
                   <CurrencyAmountInput compact value={l.amount} onChange={(v) => setLine(i, 'amount', v)}
                     fx={l.fx} onFxChange={(fxVal) => setLine(i, 'fx', fxVal)} placeholder="₪" />
                 </div>
                 <select className="line-scope" value={l.team_scope || 'both'} title={t('lineScope')}
-                  onChange={(e) => setLine(i, 'team_scope', e.target.value)}>
+                  onChange={(e) => setLineScope(i, e.target.value)}>
                   <option value="both">{t('scope_both')}</option>
                   <option value="frc">{t('scope_frc')}</option>
                   <option value="ftc">{t('scope_ftc')}</option>

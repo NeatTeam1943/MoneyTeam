@@ -70,9 +70,16 @@ export default function ReceiptPreview({ path, number, onClose }) {
       if (res.status === 405 || res.status === 501) {
         res = await fetch(url, { method: 'GET', cache: 'no-store' })
       }
-      setDiag({ status: res.status, type: res.headers.get('content-type') || '' })
+      // Size is the tell: a few bytes means the object is truncated in the
+      // bucket, a huge one means the browser gave up decoding it. Without it
+      // "200 image/png" says the file is fine while it plainly is not.
+      setDiag({
+        status: res.status,
+        type: res.headers.get('content-type') || '',
+        length: res.headers.get('content-length'),
+      })
     } catch {
-      setDiag({ status: 0, type: '' })
+      setDiag({ status: 0, type: '', length: null })
     }
   }
 
@@ -93,6 +100,7 @@ export default function ReceiptPreview({ path, number, onClose }) {
       <ul className="mono" style={{ fontSize: 12, color: 'var(--text-faint)', paddingInlineStart: 18, lineHeight: 1.9 }}>
         <li>{t('previewStatus')}: {diag ? (diag.status || 'network error') : '—'}</li>
         <li>{t('previewType')}: {diag?.type || '—'}</li>
+        <li>{t('previewSize')}: {diag?.length ? `${Number(diag.length).toLocaleString()} B` : '—'}</li>
         <li style={{ wordBreak: 'break-all' }}>{t('previewPath')}: {clean}</li>
       </ul>
       {url && <a className="btn btn-primary" href={url} target="_blank" rel="noreferrer">{t('openInNewTab')} ↗</a>}

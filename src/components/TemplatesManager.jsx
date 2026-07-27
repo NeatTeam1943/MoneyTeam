@@ -11,7 +11,7 @@ export const FIELD_TYPES = ['text', 'number', 'select', 'multiselect']
 export const hasOptions = (ty) => ty === 'select' || ty === 'multiselect'
 
 // Mentor-managed shopping templates: a name + a list of typed fields.
-export default function TemplatesManager({ canWrite }) {
+export default function TemplatesManager({ canWrite, onChanged }) {
   const { t } = useI18n()
   const toast = useToast()
   const [rows, setRows] = useState([])
@@ -28,7 +28,7 @@ export default function TemplatesManager({ canWrite }) {
   async function del(row) {
     if (!confirm(t('confirmDelete'))) return
     await supabase.from('shopping_templates').delete().eq('id', row.id)
-    toast.success(t('deleted')); load()
+    toast.success(t('deleted')); load(); onChanged?.()
   }
 
   const describe = (f) => `${f.label}${f.required ? ' *' : ''} (${t('ftype_' + (f.type || 'text'))})`
@@ -61,7 +61,7 @@ export default function TemplatesManager({ canWrite }) {
         </table>
         {!rows.length && <div className="empty">{t('noRows')}</div>}
       </div>
-      {open && <TemplateForm editing={editing} onClose={() => setOpen(false)} onSaved={() => { setOpen(false); toast.success(t('saved')); load() }} />}
+      {open && <TemplateForm editing={editing} onClose={() => setOpen(false)} onSaved={() => { setOpen(false); toast.success(t('saved')); load(); onChanged?.() }} />}
     </div>
   )
 }

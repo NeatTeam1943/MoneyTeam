@@ -93,7 +93,11 @@ export default function Transactions() {
 
   const budgetOptions = useMemo(() => budgets.map((b) => ({
     id: b.id,
-    label: b.category_id ? (lk.categoryTree.find((c) => c.id === b.category_id)?.path || lk.categoryName[b.category_id] || '—') : t('overall'),
+    team_scope: b.team_scope || 'both',
+    // The program is part of the budget's identity now — two categories with
+    // the same name can be different pots, so the label has to say which.
+    label: (b.category_id ? (lk.categoryTree.find((c) => c.id === b.category_id)?.path || lk.categoryName[b.category_id] || '—') : t('overall'))
+      + ((b.team_scope && b.team_scope !== 'both') ? ` · ${b.team_scope.toUpperCase()}` : ''),
   })), [budgets, lk.categoryTree, lk.categoryName, t])
   const budgetLabel = useMemo(() => Object.fromEntries(budgetOptions.map((b) => [b.id, b.label])), [budgetOptions])
   const budgetCat = useMemo(() => Object.fromEntries(budgets.map((b) => [b.id, b.category_id])), [budgets])

@@ -10,6 +10,7 @@ import { money, lineTotal } from '../lib/format'
 import Modal from '../components/Modal'
 import { catLabel } from '../context/LookupsContext'
 import { useTeamScope } from '../context/TeamScopeContext'
+import { TeamScopeBadge, TeamScopePicker } from '../components/TeamScope'
 
 const axis = { fontSize: 12, fill: '#4c5570', fontFamily: 'Space Mono, monospace' }
 const tip = { background: '#fff', border: '1px solid #c6cde0', borderRadius: 8, fontSize: 13, color: '#151a2b' }
@@ -66,12 +67,21 @@ export default function Budgets() {
     }
   }, [activeId, uid])
 
-  // A budget has no scope of its own — it hangs off a category, so it inherits
-  // that category's FRC/FTC marker. Overall (no category) always shows.
-  const catScope = useMemo(() => Object.fromEntries(lk.categories.map((c) => [c.id, c.team_scope])), [lk.categories])
-  const scopedBudgets = useMemo(() => budgets.filter((b) => !b.category_id || ts.matches(catScope[b.category_id])), [budgets, catScope, ts])
-  const scopedExpenses = useMemo(() => expenses.filter((l) => ts.matches(l.transactions?.team_scope)), [expenses, ts])
-  const scopedShopping = useMemo(() => shopping.filter((r) => ts.matches(r.team_scope)), [shopping, ts])
+  // A budget now owns its program (migration 20), so the filter reads it
+  // directly instead of guessing from the category.
+  const scopedBudgets = useMemo(() => budgets.filter((b) => ts.matches(b.team_scope)), [budgets, ts])
+
+  // Spend and requests are NOT filtered by the program checklist, and that is
+  // the whole point. A shared pot consumed by FTC has less money left in it
+  // whether or not you are currently looking at FTC — filtering the consumed
+  // figure would show a remaining balance larger than the money that exists.
+  // The checklist decides which budgets you SEE; never how full they are.
+  const scopedExpenses = expenses
+  const scopedShopping = shopping
+
+  // Kept separately so a shared pot can show who consumed it, without that
+  // split ever being mistaken for the total.
+  const matchesTeam = (scope) => ts.matches(scope)
 
   // For each budget: spend + requested roll up over the category subtree.
   const budgetCat = useMemo(() => Object.fromEntries(budgets.map((b) => [b.id, b.category_id])), [budgets])
@@ -95,7 +105,14 @@ export default function Budgets() {
       ? (isOverall ? (cid) => cid == null : (cid) => cid === b.category_id)
       : (isOverall ? () => true : (cid) => cid && set.has(cid))
     // an expense's "category" is the category of the budget it was drawn from
+    // spent = everything charged to this budget, never filtered by program.
     const spent = scopedExpenses.reduce((s, l) => s + (inScope(budgetCat[l.budget_id]) ? Number(l.amount) : 0), 0)
+    // ...and, for a shared pot only, how much of that came from the programs
+    // currently ticked. Shown as a secondary line so the split is visible
+    // without ever being mistaken for the balance.
+    const spentInScope = b.team_scope !== 'both' || ts.all ? spent
+      : scopedExpenses.reduce((s, l) =>
+        s + (inScope(budgetCat[l.budget_id]) && matchesTeam(l.team_scope) ? Number(l.amount) : 0), 0)
     const requested = scopedShopping.reduce((s, r) => {
       if (r.status !== 'pending_approval' && r.status !== 'approved') return s
       return s + (inScope(r.category_id) ? lineTotal(r) : 0)
@@ -103,7 +120,7 @@ export default function Budgets() {
     return {
       ...b,
       label: isOverall ? t('overall') : (lk.categoryName[b.category_id] || t('uncategorized')),
-      spent, requested,
+      spent, spentInScope, requested,
       remaining: Number(b.amount) - spent,
       pct: b.amount > 0 ? Math.min(999, (spent / Number(b.amount)) * 100) : 0,
       childOver: (() => {
@@ -123,7 +140,7 @@ export default function Budgets() {
   const chartRows = useMemo(() => buildRows(categoryGrouping),
     [scopedBudgets, scopedExpenses, scopedShopping, budgetCat, lk, t, categoryGrouping])   // eslint-disable-line react-hooks/exhaustive-deps
 
-  const chartData = useMemo(() => chartRows.map((r) => ({ name: r.label, [t('spent')]: r.spent, [t('requested')]: r.requested })), [chartRows, t])
+  const chartData = useMemo(() => chartRows.map((r) => ({ name: r.team_scope === 'both' ? r.label : `${r.label} · ${r.team_scope.toUpperCase()}`, [t('spent')]: r.spent, [t('requested')]: r.requested })), [chartRows, t])
 
   async function del(id) {
     if (!confirm(t('confirmDelete'))) return
@@ -173,7 +190,9 @@ export default function Budgets() {
           {rows.map((r) => (
             <div key={r.id} className="panel panel-pad" style={r.childOver ? { borderColor: 'var(--danger)' } : undefined}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
-                <h3 style={{ fontSize: 16 }}>{r.label}</h3>
+                <h3 style={{ fontSize: 16, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {r.label}<TeamScopeBadge scope={r.team_scope} />
+                </h3>
                 <span className="mono" style={{ color: 'var(--text-dim)', fontSize: 13 }}>{Math.round(r.pct)}%</span>
               </div>
               {r.childOver && <div style={{ color: 'var(--danger)', fontSize: 12, fontWeight: 700, marginBottom: 8 }}>{t('childrenExceedParent')}</div>}
@@ -183,6 +202,15 @@ export default function Budgets() {
                 <span><span style={{ color: 'var(--text-faint)' }}>{t('budget')} </span><b className="mono">{money(r.amount)}</b></span>
                 <span style={{ color: r.remaining < 0 ? 'var(--danger)' : 'var(--ok)' }}>{t('remaining')} <b className="mono">{money(r.remaining)}</b></span>
               </div>
+              {/* A shared pot always reports its FULL consumption; this line
+                  says how much of it came from the programs you are looking
+                  at, so the split is visible without the balance ever being
+                  understated. */}
+              {r.team_scope === 'both' && r.spentInScope !== r.spent && (
+                <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-faint)' }}>
+                  {t('sharedPotNote').replace('{v}', money(r.spentInScope))}
+                </div>
+              )}
               {canBudget && (
                 <div style={{ marginTop: 12, display: 'flex', gap: 6 }}>
                   <button className="btn btn-ghost btn-sm" onClick={() => { setEditing(r); setOpen(true) }}>{t('edit')}</button>
@@ -213,15 +241,19 @@ function BudgetForm({ editing, seasonId, categoryTree, existing, onClose, onSave
   const { t } = useI18n()
   const [categoryId, setCategoryId] = useState(editing?.category_id || '')
   const [amount, setAmount] = useState(editing?.amount || '')
+  const [teamScope, setTeamScope] = useState(editing?.team_scope || 'both')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
 
-  const taken = new Set(existing.filter((b) => b.id !== editing?.id).map((b) => b.category_id || '__overall__'))
+  // One pot per category PER PROGRAM now, so the "already taken" test has to
+  // include the program or it would block a legitimate second budget.
+  const taken = new Set(existing.filter((b) => b.id !== editing?.id)
+    .map((b) => `${b.category_id || '__overall__'}|${b.team_scope || 'both'}`))
 
   async function save() {
     if (!(Number(amount) >= 0)) { setErr(t('requiredField') + ': ' + t('amount')); return }
     setErr(''); setBusy(true)
-    const payload = { season_id: seasonId, category_id: categoryId || null, amount: Number(amount) }
+    const payload = { season_id: seasonId, category_id: categoryId || null, amount: Number(amount), team_scope: teamScope }
     const res = editing
       ? await supabase.from('budgets').update(payload).eq('id', editing.id)
       : await supabase.from('budgets').insert(payload)
@@ -239,11 +271,17 @@ function BudgetForm({ editing, seasonId, categoryTree, existing, onClose, onSave
       </>}
     >
       <div className="field">
+        <label>{t('teamScope')}</label>
+        <TeamScopePicker value={teamScope} onChange={setTeamScope} />
+        <p style={{ color: 'var(--text-faint)', fontSize: 12, margin: '4px 0 0' }}>{t('budgetScopeHint')}</p>
+      </div>
+
+      <div className="field">
         <label>{t('category')}</label>
         <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} disabled={!!editing}>
-          <option value="" disabled={taken.has('__overall__')}>{t('overall')}</option>
+          <option value="" disabled={taken.has(`__overall__|${teamScope}`)}>{t('overall')}</option>
           {categoryTree.map((c) => (
-            <option key={c.id} value={c.id} disabled={taken.has(c.id)}>{catLabel(c)}</option>
+            <option key={c.id} value={c.id} disabled={taken.has(`${c.id}|${teamScope}`)}>{catLabel(c)}</option>
           ))}
         </select>
         {categoryTree.length === 0 && <p style={{ color: 'var(--text-faint)', fontSize: 12, marginTop: 6 }}>{t('noCategoriesHint')}</p>}

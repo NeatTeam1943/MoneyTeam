@@ -91,11 +91,14 @@ export default function Simulation() {
   const budgetCat = useMemo(() => Object.fromEntries(budgets.map((b) => [b.id, b.category_id])), [budgets])
   const budgetForCategory = (categoryId) => (budgets.find((b) => b.category_id === categoryId) || {}).id || null
 
-  const projectedBudgets = useMemo(() => budgets.map((b) => {
+  const projectedBudgets = useMemo(() => budgets.filter((b) => ts.matches(b.team_scope)).map((b) => {
     const set = b.category_id ? lk.descendantsOf(b.category_id) : null
     const inScope = (cid) => (b.category_id ? (cid && set.has(cid)) : true)
+    // NOT program-filtered, on purpose: a shared pot already consumed by the
+    // other program has that much less left, whichever program you are
+    // simulating. Filtering here would project money that is already gone.
     const spent = lines.reduce(
-      (s, l) => s + (ts.matches(l.transactions?.team_scope) && inScope(budgetCat[l.budget_id]) ? Number(l.amount) : 0), 0)
+      (s, l) => s + (inScope(budgetCat[l.budget_id]) ? Number(l.amount) : 0), 0)
     // An item lands on the budget of its own category, then rolls up the tree
     // exactly the way real spend does.
     const planned = selected.reduce((s, r) => s + (inScope(r.category_id) ? cost(r) : 0), 0)
@@ -103,7 +106,8 @@ export default function Simulation() {
     const after = spent + planned
     return {
       id: b.id,
-      label: b.category_id ? (lk.categoryName[b.category_id] || t('uncategorized')) : t('overall'),
+      label: (b.category_id ? (lk.categoryName[b.category_id] || t('uncategorized')) : t('overall'))
+        + ((b.team_scope && b.team_scope !== 'both') ? ` · ${b.team_scope.toUpperCase()}` : ''),
       amount, spent, planned, after,
       remaining: amount - after,
       pct: amount > 0 ? (after / amount) * 100 : 0,

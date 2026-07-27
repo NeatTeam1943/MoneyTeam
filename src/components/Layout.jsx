@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext'
 import { useSeason } from '../context/SeasonContext'
 import { useI18n } from '../lib/i18n'
 import { useTeamScope } from '../context/TeamScopeContext'
+import { SCOPE_COLOR } from './TeamScope'
 
 export default function Layout({ children }) {
   const { t, toggle, lang } = useI18n()
@@ -62,10 +63,12 @@ export default function Layout({ children }) {
               "shared" always show, so ticking only FTC means "everything FTC
               touches", not "only rows literally tagged FTC". */}
           <div className="tabs" style={{ marginBottom: 0 }} title={t('teamScopeHint')}>
-            <button className={'tab' + (ts.frc ? ' active' : '')} onClick={() => ts.toggle('frc')}>
+            <button className={'tab' + (ts.frc ? ' active' : '')} onClick={() => ts.toggle('frc')}
+              style={ts.frc ? { background: SCOPE_COLOR.frc, color: '#fff', borderColor: SCOPE_COLOR.frc } : undefined}>
               {ts.frc ? '☑' : '☐'} FRC
             </button>
-            <button className={'tab' + (ts.ftc ? ' active' : '')} onClick={() => ts.toggle('ftc')}>
+            <button className={'tab' + (ts.ftc ? ' active' : '')} onClick={() => ts.toggle('ftc')}
+              style={ts.ftc ? { background: SCOPE_COLOR.ftc, color: '#fff', borderColor: SCOPE_COLOR.ftc } : undefined}>
               {ts.ftc ? '☑' : '☐'} FTC
             </button>
           </div>

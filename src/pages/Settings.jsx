@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useSeason } from '../context/SeasonContext'
 import { useI18n } from '../lib/i18n'
+import { useLookups } from '../lib/useLookups'
 import SimpleCrud from '../components/SimpleCrud'
 import TemplatesManager from '../components/TemplatesManager'
 import PendingUsers from '../components/PendingUsers'
@@ -10,6 +11,12 @@ export default function Settings() {
   const { t } = useI18n()
   const { isMentor } = useAuth()
   const { refresh: refreshSeasons } = useSeason()
+  // Accounts, categories, sources, vendors, priority levels and templates all
+  // live in the shared lookups cache, which loads ONCE per sign-in. Editing any
+  // of them here without refreshing that cache means the new row does not
+  // appear in the transaction or shopping forms until a full page reload —
+  // which looks exactly like "I added it and it isn't there".
+  const { reload: reloadLookups } = useLookups()
   const [tab, setTab] = useState('seasons')
 
   const tabs = ['seasons', 'accounts', 'sources', 'categories', 'vendors', 'templates', 'priorityLevels', 'members']
@@ -31,6 +38,7 @@ export default function Settings() {
     },
     accounts: {
       table: 'accounts', orderBy: 'name', canWrite: isMentor,
+      onChanged: reloadLookups,
       fields: [
         { key: 'name', label: t('name'), type: 'text', required: true },
         { key: 'type', label: t('type'), type: 'select', default: 'bank', options: [
@@ -44,6 +52,7 @@ export default function Settings() {
     },
     sources: {
       table: 'income_sources', orderBy: 'name', canWrite: isMentor,
+      onChanged: reloadLookups,
       fields: [
         { key: 'name', label: t('name'), type: 'text', required: true },
         { key: 'type', label: t('type'), type: 'select', default: 'sponsor', options: [
@@ -56,6 +65,7 @@ export default function Settings() {
     },
     categories: {
       table: 'categories', orderBy: 'name', canWrite: isMentor,
+      onChanged: reloadLookups,
       fields: [
         { key: 'name', label: t('name'), type: 'text', required: true },
         { key: 'parent_id', label: t('parent'), dynamic: 'categories' },
@@ -67,6 +77,7 @@ export default function Settings() {
     },
     vendors: {
       table: 'vendors', orderBy: 'name', canWrite: isMentor,
+      onChanged: reloadLookups,
       fields: [
         { key: 'name', label: t('name'), type: 'text', required: true },
         { key: 'is_active', label: t('active'), type: 'checkbox', default: true },
@@ -74,6 +85,7 @@ export default function Settings() {
     },
     priorityLevels: {
       table: 'priority_levels', orderBy: 'rank', canWrite: isMentor,
+      onChanged: reloadLookups,
       fields: [
         { key: 'name', label: t('name'), type: 'text', required: true },
         { key: 'rank', label: t('rank'), type: 'number', default: 0 },
@@ -103,7 +115,7 @@ export default function Settings() {
       </div>
       {!isMentor && <p style={{ color: 'var(--text-faint)', fontSize: 13 }}>{t('contactMentor')}</p>}
       {tab === 'members' && isMentor && <PendingUsers />}
-      {tab === 'templates' ? <TemplatesManager canWrite={isMentor} /> : <SimpleCrud key={tab} {...cfg} />}
+      {tab === 'templates' ? <TemplatesManager canWrite={isMentor} onChanged={reloadLookups} /> : <SimpleCrud key={tab} {...cfg} />}
     </div>
   )
 }

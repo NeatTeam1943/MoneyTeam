@@ -118,14 +118,9 @@ export default function Transactions() {
   // that does carry category_id directly.
   // A purchase can mix programs, so the row shows every marking its lines
   // actually carry rather than collapsing the lot to "shared".
-  const linesByTx = useMemo(() => {
-    const m = {}
-    for (const l of lines) (m[l.transaction_id] = m[l.transaction_id] || []).push(l)
-    return m
-  }, [lines])
-
+  // txLines is ALREADY keyed by transaction id — no second index needed.
   const scopesOf = (r) => {
-    const own = linesByTx[r.id] || []
+    const own = txLines[r.id] || []
     const distinct = [...new Set(own.map((l) => l.team_scope || 'both'))]
     return distinct.length ? distinct : [r.team_scope || 'both']
   }

@@ -180,7 +180,10 @@ export function exportReport(meta) {
     // shared and unsplit; writing 0 here would turn "unavailable" into a
     // number somebody would later trust.
     { Metric: 'Net', Value: totals.net == null ? 'n/a — filtered view, income is shared' : Number(totals.net) },
-    { Metric: 'In-kind', Value: Number(totals.inkind || 0) },
+    // In-kind rows carry amount = 1 as a placeholder, so summing them is a
+    // COUNT, not a value. Reporting it in a money column implied a shekel
+    // figure the team never received.
+    { Metric: 'In-kind donations (count)', Value: Number(totals.inkind || 0) },
 
   ]
   XLSX.utils.book_append_sheet(wb, provenanceSheet(meta), 'About')

@@ -259,7 +259,7 @@ export default function Shopping() {
       <div className="charts">
         <div className="panel panel-pad">
           <div className="section-title" style={{ marginTop: 0 }}>{t('requestedAllByCategory')}</div>
-          <div style={{ height: 220, direction: 'ltr' }}>
+          <div className="chart-box-short" style={{ direction: 'ltr' }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={byCategoryAll} layout="vertical" margin={{ left: 8, right: 16 }}>
                 <XAxis type="number" tick={axis} allowDecimals={false} /><YAxis type="category" dataKey="name" tick={axis} width={130} interval={0} />
@@ -271,7 +271,7 @@ export default function Shopping() {
         </div>
         <div className="panel panel-pad">
           <div className="section-title" style={{ marginTop: 0 }}>{t('requestedByStatus')}</div>
-          <div style={{ height: 220, direction: 'ltr' }}>
+          <div className="chart-box-short" style={{ direction: 'ltr' }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={byStatus} margin={{ left: 8, right: 8 }}>
                 <CartesianGrid stroke="#dde2ee" vertical={false} />
@@ -284,7 +284,7 @@ export default function Shopping() {
         </div>
         <div className="panel panel-pad">
           <div className="section-title" style={{ marginTop: 0 }}>{t('actualByCategory')}</div>
-          <div style={{ height: 220, direction: 'ltr' }}>
+          <div className="chart-box-short" style={{ direction: 'ltr' }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={actualByCategory} layout="vertical" margin={{ left: 8, right: 16 }}>
                 <XAxis type="number" tick={axis} allowDecimals={false} /><YAxis type="category" dataKey="name" tick={axis} width={130} interval={0} />
@@ -296,7 +296,7 @@ export default function Shopping() {
         </div>
         <div className="panel panel-pad">
           <div className="section-title" style={{ marginTop: 0 }}>{t('requestedByCategory')}</div>
-          <div style={{ height: 220, direction: 'ltr' }}>
+          <div className="chart-box-short" style={{ direction: 'ltr' }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={byCategoryOpen} layout="vertical" margin={{ left: 8, right: 16 }}>
                 <XAxis type="number" tick={axis} allowDecimals={false} /><YAxis type="category" dataKey="name" tick={axis} width={130} interval={0} />

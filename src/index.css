@@ -144,9 +144,20 @@ label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 
 
 /* ---------- Stat cards ---------- */
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }
+/* A grid item defaults to min-width:auto, so "₪119,695.45" — which has no
+   break opportunity — forces its own column wider than the container. That
+   pushed the figure outside the card and gave the whole page a horizontal
+   scrollbar. Letting the item shrink is what actually fixes it; the font
+   scaling below is what keeps it legible once it can. */
+.stats > * { min-width: 0; }
+.stat { min-width: 0; overflow: hidden; }
 .stat { padding: 16px 18px; }
 .stat .k { color: var(--text-faint); font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
-.stat .v { font-family: var(--font-mono); font-size: 26px; font-weight: 700; margin-top: 8px; }
+.stat .v {
+  font-family: var(--font-mono); font-weight: 700; margin-top: 8px;
+  font-size: clamp(1rem, 4.4vw, 1.625rem);
+  white-space: nowrap; min-width: 0;
+}
 
 /* ---------- Table ---------- */
 .table-wrap { overflow-x: auto; }
@@ -167,7 +178,6 @@ table.data tr:hover td { background: var(--panel-2); }
 
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-@media (max-width: 900px) { .charts, .grid-2 { grid-template-columns: 1fr; } .app { grid-template-columns: 1fr; } .sidebar { flex-direction: row; overflow-x: auto; } }
 
 /* ---------- Modal ---------- */
 .overlay {
@@ -227,22 +237,119 @@ table.data tr:hover td { background: var(--panel-2); }
     minmax(8rem, 1.1fr) minmax(9rem, 1fr) minmax(5.5rem, auto) minmax(9rem, 1.5fr) auto;
 }
 .line-scope { min-width: 5.5rem; }
-@media (max-width: 860px) {
-  .line-row { grid-template-columns: 1fr 1fr auto; }
-  .line-row > .line-desc { grid-column: 1 / -1; }
-}
-@media (max-width: 560px) {
-  .line-row { grid-template-columns: 1fr auto; }
-  .line-row > .line-desc, .line-row > .line-scope { grid-column: 1 / -1; }
-}
 
 /* the modal itself should track the viewport, not a fixed 760px */
 .modal.modal-wide { max-width: min(60rem, 96vw); }
 
 /* toolbars wrap instead of overflowing on a phone */
 .toolbar { flex-wrap: wrap; }
-@media (max-width: 640px) {
-  .toolbar > .btn, .toolbar > select, .toolbar > input { flex: 1 1 auto; }
-  .stats { grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); }
-  .topbar { flex-wrap: wrap; row-gap: 8px; }
+
+/* Nothing should be able to widen the document itself. This is a backstop:
+   the causes above are fixed, but a future long unbreakable string should
+   produce a scrollable panel, never a scrollable page. */
+html, body { max-width: 100%; overflow-x: hidden; }
+.main, .content { min-width: 0; }
+
+/* ===========================================================================
+   Responsive layer
+   ---------------------------------------------------------------------------
+   One place for everything that has to adapt. Sizes are expressed in rem and
+   clamp() rather than pixel steps, so the layout degrades smoothly between
+   breakpoints instead of only at them.
+
+   Breakpoints, and what each is actually for:
+     <= 560px   phone           one column, chrome trimmed to the minimum
+     <= 900px   tablet          sidebar becomes a scrolling top row
+     <= 1200px  small laptop    narrower sidebar
+     >= 1600px  large desktop   cap the reading width
+   =========================================================================== */
+
+/* Charts: height follows the viewport instead of being nailed to a pixel
+   value that leaves a phone showing a letterbox and a monitor showing waste. */
+.chart-box       { height: clamp(13rem, 34vh, 17.5rem); }
+.chart-box-tall  { height: clamp(15rem, 40vh, 19rem); }
+.chart-box-short { height: clamp(11rem, 28vh, 13.75rem); }
+
+/* Tables are the one thing that legitimately scrolls sideways — a ledger has
+   more columns than a phone has width, and shrinking them to fit makes the
+   numbers unreadable. The wrapper scrolls; the page does not. */
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+table.data { min-width: max-content; }
+
+@media (max-width: 1200px) {
+  .app { grid-template-columns: 13rem 1fr; }
+}
+
+@media (max-width: 860px) {
+  .line-row { grid-template-columns: 1fr 1fr auto; }
+  .line-row > .line-desc { grid-column: 1 / -1; }
+}
+
+@media (max-width: 900px) {
+  .app { grid-template-columns: 1fr; }
+  .sidebar {
+    flex-direction: row; overflow-x: auto; -webkit-overflow-scrolling: touch;
+    border-inline-end: none; border-block-end: 1px solid var(--line);
+    position: sticky; top: 0; z-index: 20;
+  }
+  .sidebar .nav-link { flex: 0 0 auto; white-space: nowrap; }
+  .brand { padding: 4px 10px; flex: 0 0 auto; }
+  .charts, .grid-2 { grid-template-columns: 1fr; }
+  .content { padding: 18px 18px 48px; }
+}
+
+@media (max-width: 560px) {
+  body { font-size: 14px; }
+  .line-row { grid-template-columns: 1fr auto; }
+  .line-row > .line-desc, .line-row > .line-scope { grid-column: 1 / -1; }
+  .content { padding: 14px 12px 44px; }
+  .topbar { padding: 10px 12px; gap: 8px; }
+  .topbar h1 { font-size: 1.05rem; }
+
+  /* Two columns is the most that stays legible; the figures inside are
+     already clamped to fit. */
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .stat { padding: 10px 10px; }
+
+  .panel-pad { padding: 12px; }
+  .section-title { font-size: 0.95rem; }
+
+  table.data { font-size: 0.8125rem; }
+  table.data th, table.data td { padding: 8px 9px; }
+
+  /* Controls reach for the full row rather than lining up three-to-a-line at
+     a width where none of them can show their label. */
+  .toolbar { gap: 8px; }
+  .toolbar > .btn, .toolbar > select, .toolbar > input { flex: 1 1 100%; }
+  .field input, .field select, .field textarea { font-size: 1rem; }  /* >=16px stops iOS zooming on focus */
+
+  .modal { max-height: 92vh; }
+  .modal-foot { flex-wrap: wrap; }
+  .modal-foot > .btn { flex: 1 1 auto; }
+}
+
+@media (max-width: 380px) {
+  .stats { grid-template-columns: 1fr; }
+}
+
+@media (min-width: 1600px) {
+  .content { max-width: 100rem; margin-inline: auto; width: 100%; }
+}
+
+/* Touch devices: hit targets stay finger-sized regardless of viewport. */
+@media (hover: none) and (pointer: coarse) {
+  .btn, .nav-link, .tab { min-height: 2.75rem; }
+  table.data td .btn { min-height: 2.25rem; }
+}
+
+/* Respect a reduced-motion preference. */
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+/* Printing a report should not carry the app chrome onto the page. */
+@media print {
+  .sidebar, .topbar, .toolbar { display: none !important; }
+  .content { padding: 0; }
+  .panel { break-inside: avoid; border-color: #999; }
 }

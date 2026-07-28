@@ -128,7 +128,7 @@ export default function Dashboard() {
       </div>
 
       <div className="section-title">{t('incomeVsExpense')} · {active?.name || ''}</div>
-      <div className="panel panel-pad" style={{ height: 300, direction: 'ltr' }}>
+      <div className="panel panel-pad chart-box-tall" style={{ direction: 'ltr' }}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={byMonth} margin={{ top: 6, right: 8, left: 8, bottom: 6 }}>
             <CartesianGrid stroke="#dde2ee" vertical={false} />
@@ -151,7 +151,7 @@ export default function Dashboard() {
               <button className={'tab' + (categoryGrouping === 'parent' ? ' active' : '')} onClick={() => setCategoryGrouping('parent')}>{t('groupByParent')}</button>
             </div>
           </div>
-          <div style={{ height: 260, direction: 'ltr' }}>
+          <div className="chart-box" style={{ direction: 'ltr' }}>
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie data={byCategory} dataKey="value" nameKey="name" outerRadius={90} innerRadius={48}>
@@ -165,7 +165,7 @@ export default function Dashboard() {
         </div>}
         <div className="panel panel-pad">
           <div className="section-title" style={{ marginTop: 0 }}>{t('bySource')}</div>
-          <div style={{ height: 260, direction: 'ltr' }}>
+          <div className="chart-box" style={{ direction: 'ltr' }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={bySource} layout="vertical" margin={{ left: 8, right: 16 }}>
                 <XAxis type="number" tick={axis} allowDecimals={false} />

@@ -12,6 +12,7 @@ import TransactionForm from '../components/TransactionForm'
 import { useTeamScope } from '../context/TeamScopeContext'
 import { TeamScopeBadge } from '../components/TeamScope'
 import { attributableAmount } from '../lib/teamScope'
+import { TX } from '../domain/constants'
 import ReceiptPreview from '../components/ReceiptPreview'
 
 export default function Transactions() {
@@ -285,7 +286,10 @@ export default function Transactions() {
                   {scopesOf(r).map((sc) => <TeamScopeBadge key={sc} scope={sc} />)}
                 </td>
                 <td className="num">
-                  {(() => {
+                  {/* An in-kind donation is equipment, not money. Its stored
+                      amount is a placeholder 1, so printing it as ₪1.00 stated
+                      a value that was never received. */}
+                  {r.type === TX.IN_KIND ? <span style={{ color: 'var(--text-faint)' }}>—</span> : (() => {
                     const part = scopeAmount(r)
                     if (ts.all || part === Number(r.amount)) return money(r.amount)
                     return (<>

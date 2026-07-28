@@ -217,18 +217,6 @@ the pending-approval gate.
 
 ## Layout
 
-```
-src/
-  pages/         Dashboard · Transactions · Budgets · Shopping · Reports
-                 Simulation · Settings · Login · NameSetup
-                 AcceptInvite  (dead — no route)
-  components/    TransactionForm · ShoppingForm · TeamScope · ScopeNotice
-                 ReceiptPreview · CurrencyAmountInput · Modal · SimpleCrud …
-  context/       Auth · Season · Lookups · TeamScope
-  lib/           supabase · i18n · format · export · teamScope
-*.sql            migrations, applied in numeric order
-```
-
 Pages are lazy-loaded, so Recharts and SheetJS only download on the routes that
 use them.
 

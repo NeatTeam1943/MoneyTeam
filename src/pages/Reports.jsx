@@ -178,7 +178,6 @@ export default function Reports() {
         <Stat k={t('totalExpense')} v={money(totals.expense)} c="var(--out)" />
         <Stat k={t('net')} v={totals.net === null ? '—' : money(totals.net)}
           c={totals.net === null ? 'var(--text-faint)' : signedColor(totals.net)} />
-        <Stat k={t('totalInKind')} v={money(totals.inkind)} c="var(--inkind)" />
         <Stat k={t('txCount')} v={String(scoped.length)} c="var(--text)" />
         <Stat k={t('avgExpense')} v={expenseCount ? money(totals.expense / expenseCount) : '—'} c="var(--out)" />
       </div>
@@ -188,7 +187,7 @@ export default function Reports() {
       ) : (
         <>
           <div className="section-title">{t('incomeVsExpense')}</div>
-          <div className="panel panel-pad" style={{ height: 280, direction: 'ltr' }}>
+          <div className="panel panel-pad chart-box" style={{ direction: 'ltr' }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={byMonth} margin={{ top: 6, right: 8, left: 8, bottom: 6 }}>
                 <CartesianGrid stroke="#dde2ee" vertical={false} />
@@ -202,7 +201,7 @@ export default function Reports() {
           </div>
 
           <div className="section-title">{t('cumulativeNet')}</div>
-          <div className="panel panel-pad" style={{ height: 260, direction: 'ltr' }}>
+          <div className="panel panel-pad chart-box" style={{ direction: 'ltr' }}>
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={cumulative} margin={{ top: 6, right: 8, left: 8, bottom: 6 }}>
                 <CartesianGrid stroke="#dde2ee" vertical={false} />
@@ -219,7 +218,7 @@ export default function Reports() {
           <div className="charts" style={{ marginTop: 16 }}>
             <div className="panel panel-pad">
               <div className="section-title" style={{ marginTop: 0 }}>{t('byVendor')}</div>
-              <div style={{ height: 280, direction: 'ltr' }}>
+              <div className="chart-box" style={{ direction: 'ltr' }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={byVendor} layout="vertical" margin={{ left: 8, right: 16 }}>
                     <XAxis type="number" tick={axis} />
@@ -234,7 +233,7 @@ export default function Reports() {
             </div>
             <div className="panel panel-pad">
               <div className="section-title" style={{ marginTop: 0 }}>{t('byScope')}</div>
-              <div style={{ height: 280, direction: 'ltr' }}>
+              <div className="chart-box" style={{ direction: 'ltr' }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie data={byScope} dataKey="value" nameKey="name" outerRadius={95} innerRadius={50}>

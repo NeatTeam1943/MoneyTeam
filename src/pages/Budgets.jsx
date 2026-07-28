@@ -138,7 +138,7 @@ export default function Budgets() {
               <button className={'tab' + (categoryGrouping === 'parent' ? ' active' : '')} onClick={() => setCategoryGrouping('parent')}>{t('groupByParent')}</button>
             </div>
           </div>
-          <div style={{ height: 260, direction: 'ltr' }}>
+          <div className="chart-box" style={{ direction: 'ltr' }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} margin={{ left: 8, right: 8 }}>
                 <CartesianGrid stroke="#dde2ee" vertical={false} />

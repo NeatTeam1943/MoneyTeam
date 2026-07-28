@@ -6,7 +6,9 @@ import { useSeason } from '../context/SeasonContext'
 import { useI18n } from '../lib/i18n'
 import { useToast } from '../lib/toast'
 import { useLookups } from '../lib/useLookups'
-import { money, lineTotal } from '../lib/format'
+import { money } from '../lib/format'
+import { buildBudgetRows } from '../domain/budgets'
+import { GROUPING, SCOPE } from '../domain/constants'
 import Modal from '../components/Modal'
 import { catLabel } from '../context/LookupsContext'
 import { useTeamScope } from '../context/TeamScopeContext'
@@ -89,58 +91,33 @@ export default function Budgets() {
   // parent budget's children into it (e.g. תחרויות shows אוכל+הסעות+מדים
   // combined); 'direct' shows only spend charged to that exact budget's own
   // category, with nothing rolled up from children.
-  const [categoryGrouping, setCategoryGrouping] = useState('parent')
+  const [categoryGrouping, setCategoryGrouping] = useState(GROUPING.PARENT)
 
   // The toggle belongs to the chart at the top and nothing else. The budget
   // cards below always show the canonical rolled-up figures, so flipping the
   // chart's view can never change what a card claims is spent or remaining.
-  const buildRows = (grouping) => scopedBudgets.map((b) => {
-    const isOverall = !b.category_id
-    const set = isOverall ? null : lk.descendantsOf(b.category_id)
-    // 'direct' for Overall means "not tracked under any specific budget at
-    // all" (budget_id/category_id is null) — otherwise the toggle would do
-    // nothing for this row, since "everything" and "everything rolled up"
-    // are the same total. 'parent' keeps Overall as the full season total.
-    const inScope = grouping === 'direct'
-      ? (isOverall ? (cid) => cid == null : (cid) => cid === b.category_id)
-      : (isOverall ? () => true : (cid) => cid && set.has(cid))
-    // an expense's "category" is the category of the budget it was drawn from
-    // spent = everything charged to this budget, never filtered by program.
-    const spent = scopedExpenses.reduce((s, l) => s + (inScope(budgetCat[l.budget_id]) ? Number(l.amount) : 0), 0)
-    // ...and, for a shared pot only, how much of that came from the programs
-    // currently ticked. Shown as a secondary line so the split is visible
-    // without ever being mistaken for the balance.
-    const spentInScope = b.team_scope !== 'both' || ts.all ? spent
-      : scopedExpenses.reduce((s, l) =>
-        s + (inScope(budgetCat[l.budget_id]) && matchesTeam(l.team_scope) ? Number(l.amount) : 0), 0)
-    const requested = scopedShopping.reduce((s, r) => {
-      if (r.status !== 'pending_approval' && r.status !== 'approved') return s
-      return s + (inScope(r.category_id) ? lineTotal(r) : 0)
-    }, 0)
-    return {
-      ...b,
-      label: isOverall ? t('overall') : (lk.categoryName[b.category_id] || t('uncategorized')),
-      spent, spentInScope, requested,
-      remaining: Number(b.amount) - spent,
-      pct: b.amount > 0 ? Math.min(999, (spent / Number(b.amount)) * 100) : 0,
-      childOver: (() => {
-        if (isOverall) return false
-        const childSum = scopedBudgets.reduce((sum, x) =>
-          (x.category_id && x.category_id !== b.category_id && set.has(x.category_id))
-            ? sum + Number(x.amount) : sum, 0)
-        return childSum > Number(b.amount)
-      })(),
-    }
-  }).sort((a, b) => (a.category_id ? 1 : 0) - (b.category_id ? 1 : 0) || b.amount - a.amount)
+  // The arithmetic lives in src/domain/budgets.js — pure, no React, and
+  // exercised directly against production data by the golden-master harness.
+  // This component's job is to say WHAT to render, not to work out the numbers.
+  const buildRows = (grouping) => buildBudgetRows(grouping, {
+    budgets: scopedBudgets,
+    expenses: scopedExpenses,
+    shopping: scopedShopping,
+    budgetCategory: budgetCat,
+    descendantsOf: lk.descendantsOf,
+    labelFor: (b) => (!b.category_id ? t('overall') : (lk.categoryName[b.category_id] || t('uncategorized'))),
+    matchesTeam,
+    allTicked: ts.all,
+  })
 
   // Cards: always 'parent' (the roll-up), independent of the chart toggle.
-  const rows = useMemo(() => buildRows('parent'),
+  const rows = useMemo(() => buildRows(GROUPING.PARENT),
     [scopedBudgets, scopedExpenses, scopedShopping, budgetCat, lk, t])          // eslint-disable-line react-hooks/exhaustive-deps
   // Chart: follows the toggle.
   const chartRows = useMemo(() => buildRows(categoryGrouping),
     [scopedBudgets, scopedExpenses, scopedShopping, budgetCat, lk, t, categoryGrouping])   // eslint-disable-line react-hooks/exhaustive-deps
 
-  const chartData = useMemo(() => chartRows.map((r) => ({ name: r.team_scope === 'both' ? r.label : `${r.label} · ${r.team_scope.toUpperCase()}`, [t('spent')]: r.spent, [t('requested')]: r.requested })), [chartRows, t])
+  const chartData = useMemo(() => chartRows.map((r) => ({ name: r.team_scope === SCOPE.BOTH ? r.label : `${r.label} · ${r.team_scope.toUpperCase()}`, [t('spent')]: r.spent, [t('requested')]: r.requested })), [chartRows, t])
 
   async function del(id) {
     if (!confirm(t('confirmDelete'))) return
@@ -206,7 +183,7 @@ export default function Budgets() {
                   says how much of it came from the programs you are looking
                   at, so the split is visible without the balance ever being
                   understated. */}
-              {r.team_scope === 'both' && r.spentInScope !== r.spent && (
+              {r.team_scope === SCOPE.BOTH && r.spentInScope !== r.spent && (
                 <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-faint)' }}>
                   {t('sharedPotNote').replace('{v}', money(r.spentInScope))}
                 </div>

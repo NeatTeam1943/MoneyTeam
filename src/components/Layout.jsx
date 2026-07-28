@@ -74,8 +74,18 @@ export default function Layout({ children }) {
           </div>
           <div className="spacer" />
           <button className="btn btn-ghost btn-sm" onClick={toggle}>{lang === 'he' ? 'EN' : 'עב'}</button>
-          <span className="badge">{member?.full_name || member?.email} · {t(role || 'viewer')}</span>
-          <button className="btn btn-ghost btn-sm" onClick={signOut}>{t('signOut')}</button>
+          {/* Role labels are namespaced (role_*) on purpose. Plain `t(role)`
+              collided with the category form's `parent` key, so a guest's
+              badge read "קטגוריית אב". A guest also has no member row, which
+              left a stray separator with nothing before it. */}
+          <span className="badge">
+            {isParent
+              ? t('role_parent')
+              : `${member?.full_name || member?.email || '—'} · ${t('role_' + (role || 'viewer'))}`}
+          </span>
+          <button className="btn btn-ghost btn-sm" onClick={signOut}>
+            {isParent ? t('exitGuest') : t('signOut')}
+          </button>
         </header>
         <main className="content">{children}</main>
       </div>

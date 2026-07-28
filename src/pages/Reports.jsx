@@ -199,7 +199,9 @@ export default function Reports() {
 
   function doExport() {
     exportReport({
-      periodLabel: `${from || '…'}_${to || '…'}`,
+      periodLabel: `${from || '…'} → ${to || '…'}`,
+      scope: { all: ts.all, frc: ts.frc, ftc: ts.ftc },
+      rowCount: scoped.length,
       seasonName: active?.name,
       totals, byMonth, byCategory, bySource, byAccount, byVendor, byScope, cumulative,
       topExpenses: topExpenses.map((r) => ({

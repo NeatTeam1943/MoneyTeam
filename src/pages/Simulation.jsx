@@ -33,8 +33,16 @@ export default function Simulation() {
   const [loading, setLoading] = useState(true)
 
   const [picked, setPicked] = useState(() => new Set())
+  // Default account for anything newly picked. Individual rows can override it,
+  // because one basket is often paid from more than one place — part from the
+  // bank, part from store credit.
   const [fundFrom, setFundFrom] = useState('')
+  const [fundBy, setFundBy] = useState({})     // { [itemId]: accountId }
   const [incomes, setIncomes] = useState([])   // [{ label, amount, account_id }]
+  // Things that are not on the shopping list yet. The point of the page is to
+  // decide whether they SHOULD be, so they have to be costable before they
+  // exist as records.
+  const [extras, setExtras] = useState([])     // [{ id, label, amount, category_id, team_scope, account_id }]
 
   async function load() {
     if (!activeId) { setLoading(false); return }
@@ -68,7 +76,11 @@ export default function Simulation() {
   const unpriced = useMemo(() => open.filter((r) => cost(r) <= 0), [open])
 
   const selected = useMemo(() => open.filter((r) => picked.has(r.id)), [open, picked])
-  const plannedSpend = useMemo(() => selected.reduce((s, r) => s + cost(r), 0), [selected])
+  const accountFor = (id) => fundBy[id] || fundFrom
+  const scopedExtras = useMemo(() => extras.filter((e) => ts.matches(e.team_scope || 'both')), [extras, ts])
+  const extrasSpend = useMemo(() => scopedExtras.reduce((s, e) => s + (Number(e.amount) || 0), 0), [scopedExtras])
+  const plannedSpend = useMemo(
+    () => selected.reduce((s, r) => s + cost(r), 0) + extrasSpend, [selected, extrasSpend])
   const plannedIncome = useMemo(() => incomes.reduce((s, r) => s + (Number(r.amount) || 0), 0), [incomes])
 
   const toggle = (id) => setPicked((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
@@ -79,10 +91,14 @@ export default function Simulation() {
   // ---- projected account balances -----------------------------------------
   const projectedAccounts = useMemo(() => balances.map((b) => {
     const inc = incomes.reduce((s, r) => s + (r.account_id === b.id ? (Number(r.amount) || 0) : 0), 0)
-    const out = fundFrom === b.id ? plannedSpend : 0
+    // Each picked item and each ad-hoc row comes out of ITS OWN account, so a
+    // basket split across two funding sources drains both correctly instead of
+    // dumping the whole cost on one.
+    const out = selected.reduce((s, r) => s + (accountFor(r.id) === b.id ? cost(r) : 0), 0)
+      + scopedExtras.reduce((s, e) => s + ((e.account_id || fundFrom) === b.id ? (Number(e.amount) || 0) : 0), 0)
     const after = Number(b.balance) + inc - out
     return { ...b, before: Number(b.balance), delta: inc - out, after }
-  }), [balances, incomes, fundFrom, plannedSpend])
+  }), [balances, incomes, selected, scopedExtras, fundBy, fundFrom])   // eslint-disable-line react-hooks/exhaustive-deps
 
   const totalAfter = projectedAccounts.reduce((s, a) => s + a.after, 0)
   const goingNegative = projectedAccounts.filter((a) => a.after < 0 && a.before >= 0)
@@ -102,6 +118,7 @@ export default function Simulation() {
     // An item lands on the budget of its own category, then rolls up the tree
     // exactly the way real spend does.
     const planned = selected.reduce((s, r) => s + (inScope(r.category_id) ? cost(r) : 0), 0)
+      + scopedExtras.reduce((s, e) => s + (inScope(e.category_id) ? (Number(e.amount) || 0) : 0), 0)
     const amount = Number(b.amount)
     const after = spent + planned
     return {
@@ -115,15 +132,21 @@ export default function Simulation() {
       nowOver: after > amount && amount > 0,
     }
   }).sort((a, b) => (a.label === t('overall') ? -1 : 0) - (b.label === t('overall') ? -1 : 0) || b.after - a.after),
-    [budgets, lines, selected, budgetCat, lk, t, ts])
+    [budgets, lines, selected, scopedExtras, budgetCat, lk, t, ts])
 
   const newlyOver = projectedBudgets.filter((b) => b.nowOver && !b.wasOver)
 
   // Items whose category has no budget at all — easy to miss, and they quietly
   // consume cash without showing up against any line.
   const unbudgeted = useMemo(
-    () => selected.filter((r) => !budgetForCategory(r.category_id)),
-    [selected, budgets])   // eslint-disable-line react-hooks/exhaustive-deps
+    () => [...selected, ...scopedExtras].filter((r) => !budgetForCategory(r.category_id)),
+    [selected, scopedExtras, budgets])   // eslint-disable-line react-hooks/exhaustive-deps
+
+  const addExtra = () => setExtras([...extras, {
+    id: `x${Date.now()}`, label: '', amount: '', category_id: '', team_scope: 'both', account_id: fundFrom,
+  }])
+  const setExtra = (i, k, v) => setExtras(extras.map((r, idx) => idx === i ? { ...r, [k]: v } : r))
+  const removeExtra = (i) => setExtras(extras.filter((_, idx) => idx !== i))
 
   const addIncome = () => setIncomes([...incomes, { label: '', amount: '', account_id: fundFrom }])
   const setIncome = (i, k, v) => setIncomes(incomes.map((r, idx) => idx === i ? { ...r, [k]: v } : r))
@@ -211,10 +234,38 @@ export default function Simulation() {
         {!projectedBudgets.length && <div className="empty">{t('noBudgetsYet')}</div>}
       </div>
 
+      <div className="section-title">{t('adHocItems')}</div>
+      <div className="panel panel-pad">
+        <p style={{ color: 'var(--text-faint)', fontSize: 13, marginTop: 0 }}>{t('adHocHint')}</p>
+        {extras.map((r, i) => (
+          <div key={r.id} style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <input placeholder={t('description')} value={r.label}
+              onChange={(e) => setExtra(i, 'label', e.target.value)} style={{ flex: '2 1 12rem' }} />
+            <input type="number" step="0.01" min="0" placeholder="₪" value={r.amount}
+              onChange={(e) => setExtra(i, 'amount', e.target.value)} style={{ flex: '1 1 7rem' }} />
+            <select value={r.category_id} onChange={(e) => setExtra(i, 'category_id', e.target.value)} style={{ flex: '1 1 10rem' }}>
+              <option value="">{t('uncategorized')}</option>
+              {lk.categoryTree.map((c) => <option key={c.id} value={c.id}>{c.path || c.name}</option>)}
+            </select>
+            <select value={r.team_scope} onChange={(e) => setExtra(i, 'team_scope', e.target.value)} style={{ flex: '0 1 7rem' }}>
+              <option value="both">{t('scope_both')}</option>
+              <option value="frc">{t('scope_frc')}</option>
+              <option value="ftc">{t('scope_ftc')}</option>
+            </select>
+            <select value={r.account_id || fundFrom} onChange={(e) => setExtra(i, 'account_id', e.target.value)} style={{ flex: '1 1 9rem' }}>
+              {lk.accountsActive.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+            <button className="btn btn-ghost btn-sm btn-danger" onClick={() => removeExtra(i)}>✕</button>
+          </div>
+        ))}
+        <button className="btn btn-sm" onClick={addExtra}>+ {t('addAdHoc')}</button>
+      </div>
+
       <div className="section-title">{t('pickItems')}</div>
       <div className="toolbar">
-        <select value={fundFrom} onChange={(e) => setFundFrom(e.target.value)}>
-          {lk.accountsActive.map((a) => <option key={a.id} value={a.id}>{t('fundFrom')}: {a.name}</option>)}
+        <select value={fundFrom} onChange={(e) => { setFundFrom(e.target.value); setFundBy({}) }}
+          title={t('defaultFundHint')}>
+          {lk.accountsActive.map((a) => <option key={a.id} value={a.id}>{t('defaultFund')}: {a.name}</option>)}
         </select>
         <button className="btn btn-sm" onClick={pickAll}>{t('selectAll')}</button>
         <button className="btn btn-sm" onClick={pickNone}>{t('selectNone')}</button>
@@ -228,6 +279,7 @@ export default function Simulation() {
           <thead><tr>
             <th></th><th>{t('name')}</th><th>{t('teamScope')}</th><th>{t('category')}</th>
             <th>{t('priority')}</th><th>{t('estPrice')}</th><th>{t('quantity')}</th><th>{t('total')}</th>
+            <th>{t('fundFrom')}</th>
           </tr></thead>
           <tbody>
             {priced.map((r) => (
@@ -240,6 +292,14 @@ export default function Simulation() {
                 <td className="num mono">{money(r.est_price)}</td>
                 <td className="num">{qtyOf(r)}</td>
                 <td className="num mono">{money(cost(r))}</td>
+                <td>
+                  {/* Only meaningful once the row is actually in the plan. */}
+                  <select value={accountFor(r.id)} disabled={!picked.has(r.id)}
+                    onChange={(e) => setFundBy({ ...fundBy, [r.id]: e.target.value })}
+                    style={{ minWidth: '8rem', opacity: picked.has(r.id) ? 1 : .45 }}>
+                    {lk.accountsActive.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                </td>
               </tr>
             ))}
           </tbody>

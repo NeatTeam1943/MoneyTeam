@@ -1,6 +1,33 @@
 import * as XLSX from 'xlsx'
 import { fmtDate, lineTotal } from './format'
 
+// Every workbook starts with this sheet.
+//
+// A spreadsheet outlives the screen that produced it. Without a record of the
+// season, the program filter and the date range, a file saved today is
+// unreadable in three months: nobody can tell whether ₪16,169 was the whole
+// purchase or one program's share of it. Worse, a filtered export looks
+// exactly like a complete one. So the provenance travels with the numbers.
+function provenanceSheet(meta = {}) {
+  const scope = meta.scope || {}
+  const programs = scope.all === false
+    ? [scope.frc ? 'FRC' : null, scope.ftc ? 'FTC' : null].filter(Boolean).join(' + ')
+    : 'FRC + FTC (all)'
+  const rows = [
+    { Field: 'Generated', Value: new Date().toISOString().replace('T', ' ').slice(0, 19) },
+    { Field: 'Season', Value: meta.seasonName || '—' },
+    { Field: 'Programs included', Value: programs },
+    { Field: 'Filtered view', Value: scope.all === false ? 'YES — figures are a subset' : 'no' },
+    { Field: 'Period', Value: meta.periodLabel || 'whole season' },
+    { Field: 'Rows', Value: meta.rowCount ?? '—' },
+  ]
+  if (scope.all === false) {
+    rows.push({ Field: 'NOTE', Value: 'Split purchases are counted at their in-view share, not the full receipt.' })
+    rows.push({ Field: 'NOTE', Value: 'Income and bank balances are shared between programs and are NOT split; they appear in full.' })
+  }
+  return XLSX.utils.json_to_sheet(rows)
+}
+
 // rows: enriched transactions (with account/category/source names resolved)
 // meta: { seasonName, accounts:[{name,balance}], periodLabel }
 export function exportTransactions(rows, meta = {}) {
@@ -10,7 +37,10 @@ export function exportTransactions(rows, meta = {}) {
     Date: fmtDate(r.date),
     Type: r.type,
     Team: r.team_scope || 'both',
+    // The full receipt, always. Under a program filter this is NOT what the
+    // screen totals — hence the next column.
     Amount: Number(r.amount),
+    'Amount in view': r._scopeAmount != null ? Number(r._scopeAmount) : Number(r.amount),
     Account: r.accountName || '',
     'To account': r.toAccountName || '',
     Source: r.sourceName || '',
@@ -22,6 +52,7 @@ export function exportTransactions(rows, meta = {}) {
     'Receipt ID': r.receipt_no || '',   // matches the filename inside the receipts ZIP
     Notes: r.notes || '',
   }))
+  XLSX.utils.book_append_sheet(wb, provenanceSheet({ ...meta, rowCount: rows.length }), 'About')
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(txSheet), 'Transactions')
 
   // Summary by category (real expenses only; equipment donations excluded)
@@ -70,6 +101,7 @@ export function exportShopping(items, meta = {}) {
     Link: r.url || '',
     Notes: r.notes || '',
   }))
+  XLSX.utils.book_append_sheet(wb, provenanceSheet({ ...meta, rowCount: items.length }), 'About')
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheet), 'Shopping')
 
   const byStatus = {}
@@ -121,8 +153,8 @@ export async function downloadAllReceipts(rows, supabase, meta = {}, onProgress)
   }
 
   // A manifest so the ZIP is self-explanatory even without the spreadsheet
-  zip.file('index.csv', 'Receipt ID,Date,Amount,Vendor,Description\n' +
-    withReceipts.map((r) => [r.receipt_no, r.date, r.amount,
+  zip.file('index.csv', 'Receipt ID,Date,Amount,Team,Vendor,Description\n' +
+    withReceipts.map((r) => [r.receipt_no, r.date, r.amount, r.team_scope || 'both',
       (r.vendor || '').replace(/"/g, '""'), (r.description || '').replace(/"/g, '""')]
       .map((v) => `"${v ?? ''}"`).join(',')).join('\n'))
 
@@ -144,11 +176,14 @@ export function exportReport(meta) {
   const summary = [
     { Metric: 'Income', Value: Number(totals.income || 0) },
     { Metric: 'Expense', Value: Number(totals.expense || 0) },
-    { Metric: 'Net', Value: Number(totals.net || 0) },
+    // Net is withheld on screen under a partial filter because income is
+    // shared and unsplit; writing 0 here would turn "unavailable" into a
+    // number somebody would later trust.
+    { Metric: 'Net', Value: totals.net == null ? 'n/a — filtered view, income is shared' : Number(totals.net) },
     { Metric: 'In-kind', Value: Number(totals.inkind || 0) },
-    { Metric: 'Period', Value: meta.periodLabel || '' },
-    { Metric: 'Season', Value: meta.seasonName || '' },
+
   ]
+  XLSX.utils.book_append_sheet(wb, provenanceSheet(meta), 'About')
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), 'Summary')
 
   const named = (rows) => (rows || []).map((r) => ({ Name: r.name, Total: Number(r.value) }))

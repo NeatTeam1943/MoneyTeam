@@ -11,6 +11,7 @@ import { catLabel } from '../context/LookupsContext'
 import TransactionForm from '../components/TransactionForm'
 import { useTeamScope } from '../context/TeamScopeContext'
 import { TeamScopeBadge } from '../components/TeamScope'
+import { attributableAmount } from '../lib/teamScope'
 import ReceiptPreview from '../components/ReceiptPreview'
 
 export default function Transactions() {
@@ -123,6 +124,12 @@ export default function Transactions() {
   // A purchase can mix programs, so the row shows every marking its lines
   // actually carry rather than collapsing the lot to "shared".
   // txLines is ALREADY keyed by transaction id — no second index needed.
+  // How much of this transaction belongs to the ticked programs. For a split
+  // purchase under a single-program filter this is LESS than r.amount — the
+  // row showed the full receipt while claiming to be a filtered view, which
+  // overstates that program's spending by the other program's share.
+  const scopeAmount = (r) => attributableAmount(r, txLines, ts)
+
   const scopesOf = (r) => {
     const own = txLines[r.id] || []
     const distinct = [...new Set(own.map((l) => l.team_scope || 'both'))]
@@ -196,8 +203,23 @@ export default function Transactions() {
     } finally { setZipping(null) }
   }
 
+  // Totals of what is actually on screen, using in-view amounts — so the sum
+  // under an FRC filter excludes the FTC half of a split purchase.
+  const listTotals = useMemo(() => {
+    let income = 0, expense = 0
+    for (const r of filtered) {
+      const v = scopeAmount(r)
+      if (r.type === 'income') income += v
+      else if (r.type === 'expense') expense += v
+    }
+    return { income, expense }
+  }, [filtered, txLines, ts])   // eslint-disable-line react-hooks/exhaustive-deps
+
   function doExport() {
-    exportTransactions(filtered, {
+    // Ship the in-view share with each row so the workbook can hold both the
+    // true receipt total and what this filtered view actually counted.
+    exportTransactions(filtered.map((r) => ({ ...r, _scopeAmount: scopeAmount(r) })), {
+      scope: { all: ts.all, frc: ts.frc, ftc: ts.ftc },
       seasonName: active?.name,
       periodLabel: from || to ? `${from || '…'}_${to || '…'}` : active?.name,
       accounts: balances.map((b) => ({ name: b.name, balance: b.balance })),
@@ -262,7 +284,18 @@ export default function Transactions() {
                 <td style={{ whiteSpace: 'nowrap' }}>
                   {scopesOf(r).map((sc) => <TeamScopeBadge key={sc} scope={sc} />)}
                 </td>
-                <td className="num">{money(r.amount)}</td>
+                <td className="num">
+                  {(() => {
+                    const part = scopeAmount(r)
+                    if (ts.all || part === Number(r.amount)) return money(r.amount)
+                    return (<>
+                      <b className="mono">{money(part)}</b>
+                      <div style={{ color: 'var(--text-faint)', fontSize: 11, whiteSpace: 'nowrap' }}>
+                        {t('outOfTotal').replace('{v}', money(r.amount))}
+                      </div>
+                    </>)
+                  })()}
+                </td>
                 <td>{r.type === 'transfer' ? `${r.accountName} → ${r.toAccountName}` : r.accountName || '—'}</td>
                 <td>{r.type === 'expense' ? (r.budgetName || '—') : (r.categoryName || r.sourceName || '—')}</td>
                 <td style={{ color: 'var(--text-dim)' }}>{r.description || r.vendor || '—'}</td>
@@ -277,6 +310,22 @@ export default function Transactions() {
               </tr>
             ))}
           </tbody>
+          {filtered.length > 0 && (
+            <tfoot>
+              <tr style={{ borderTop: '2px solid var(--line-strong)', fontWeight: 700 }}>
+                <td colSpan={2} style={{ color: 'var(--text-dim)' }}>
+                  {t('shownTotal')} ({filtered.length})
+                </td>
+                <td className="num mono" style={{ color: 'var(--in)', whiteSpace: 'nowrap' }}>
+                  + {money(listTotals.income)}
+                </td>
+                <td className="num mono" style={{ color: 'var(--out)', whiteSpace: 'nowrap' }}>
+                  − {money(listTotals.expense)}
+                </td>
+                <td colSpan={20} />
+              </tr>
+            </tfoot>
+          )}
         </table>
         {loading ? <div className="empty">{t('loading')}</div> : (!filtered.length && <div className="empty">{t('noRows')}</div>)}
       </div>

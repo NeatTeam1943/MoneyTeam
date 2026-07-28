@@ -261,7 +261,7 @@ export default function Shopping() {
   }, [buyableItems, budgets])
 
   function doExport() {
-    exportShopping(filtered, { seasonName: active?.name })
+    exportShopping(filtered, { seasonName: active?.name, scope: { all: ts.all, frc: ts.frc, ftc: ts.ftc } })
   }
 
   return (

@@ -77,11 +77,10 @@ export default function ReceiptPreview({ path, number, onClose }) {
   const [err, setErr] = useState('')
   const [diag, setDiag] = useState(null)     // { status, type }
   const [failed, setFailed] = useState(false)
-  const [forceShow, setForceShow] = useState(false)
 
   useEffect(() => {
     let alive = true
-    setUrl(null); setErr(''); setDiag(null); setFailed(false); setForceShow(false)
+    setUrl(null); setErr(''); setDiag(null); setFailed(false)
 
     supabase.storage.from('receipts').createSignedUrl(clean, RECEIPT_URL_TTL_SECONDS).then(({ data, error }) => {
       if (!alive) return
@@ -113,10 +112,13 @@ export default function ReceiptPreview({ path, number, onClose }) {
   }, [clean, t])
 
   const byteSize = Number(diag?.length) || 0
-  const isHuge = byteSize > LARGE_IMAGE_BYTES
-  // Only block once we actually know the format — before the probe returns,
-  // signature is null and canBrowserRender is permissive, so a normal receipt
-  // is never delayed.
+  // Size is NOT a gate. A 5 MB screenshot is an ordinary receipt and browsers
+  // render it fine; refusing to try produced a scary message for a healthy
+  // file. Size is only used to explain a failure that actually happened.
+  const isLarge = byteSize > LARGE_IMAGE_BYTES
+  // Format IS a gate, because it is a certainty rather than a guess: no
+  // browser but Safari decodes TIFF or HEIC, so attempting it only yields a
+  // broken icon with no explanation.
   const unsupported = diag?.signature != null && !canBrowserRender(diag.signature)
 
   // Diagnose ONLY after something actually fails to render.
@@ -180,6 +182,11 @@ export default function ReceiptPreview({ path, number, onClose }) {
             : diag.status >= 200 && diag.status < 300 ? t('previewOkButUndisplayable')
               : t('previewDiag')}
       </p>
+      {isLarge && (
+        <p style={{ color: 'var(--text-dim)', fontSize: 13 }}>
+          {t('largeImageHint').replace('{v}', (byteSize / (1024 * 1024)).toFixed(1))}
+        </p>
+      )}
       <ul className="mono" style={{ fontSize: 12, color: 'var(--text-faint)', paddingInlineStart: 18, lineHeight: 1.9 }}>
         <li>{t('previewStatus')}: {diag ? (diag.status || 'network error') : '—'}</li>
         <li>{t('previewType')}: {diag?.type || '—'}</li>
@@ -220,20 +227,7 @@ export default function ReceiptPreview({ path, number, onClose }) {
             <a className="btn btn-primary" href={url} download={filename}>{t('download')}</a>
           </div>
         )}
-        {/* Big images get an explicit choice instead of a broken icon. */}
-        {url && !failed && kind === 'image' && !unsupported && isHuge && !forceShow && (
-          <div className="empty-cta">
-            <p style={{ fontWeight: 700, marginTop: 0 }}>{t('largeImageTitle')}</p>
-            <p style={{ color: 'var(--text-dim)', fontSize: 13 }}>
-              {t('largeImageBody').replace('{v}', (byteSize / (1024 * 1024)).toFixed(1))}
-            </p>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
-              <a className="btn btn-primary" href={url} target="_blank" rel="noreferrer">{t('openInNewTab')} ↗</a>
-              <button className="btn" onClick={() => setForceShow(true)}>{t('displayAnyway')}</button>
-            </div>
-          </div>
-        )}
-        {url && !failed && kind === 'image' && !unsupported && (!isHuge || forceShow) && (
+        {url && !failed && kind === 'image' && !unsupported && (
           // alt is empty on purpose: a failed <img> would otherwise print the
           // filename next to a broken icon, which is what made this look like
           // the preview had rendered something.

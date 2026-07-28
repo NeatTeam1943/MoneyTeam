@@ -66,6 +66,7 @@ export default function Settings() {
     categories: {
       table: 'categories', orderBy: 'name', canWrite: isMentor,
       onChanged: reloadLookups,
+      tree: true,
       fields: [
         { key: 'name', label: t('name'), type: 'text', required: true },
         { key: 'parent_id', label: t('parent'), dynamic: 'categories' },

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase, withTimeout } from '../lib/supabase'
 import { useI18n } from '../lib/i18n'
 import { useAuth } from '../context/AuthContext'
@@ -10,7 +10,10 @@ import Modal from './Modal'
 // manualId: true => the PK is entered by hand (used for members, id = auth uid)
 // onChanged: optional callback fired after any add/edit/delete — lets a parent
 // (e.g. the global SeasonContext) know this table changed and refetch itself.
-export default function SimpleCrud({ table, fields, orderBy, manualId, canWrite, hint, onChanged }) {
+// tree: true => rows have a parent_id and are listed as a hierarchy instead of
+//   a flat alphabetical list, which for categories is the difference between
+//   "אלקטרוניקה" appearing at random and appearing under "רובוט" where it lives.
+export default function SimpleCrud({ table, fields, orderBy, manualId, canWrite, hint, onChanged, tree }) {
   const { t } = useI18n()
   const { session } = useAuth()
   const uid = session?.user?.id
@@ -21,6 +24,31 @@ export default function SimpleCrud({ table, fields, orderBy, manualId, canWrite,
   const [loading, setLoading] = useState(true)
   const isMembers = table === 'members'
   const [selected, setSelected] = useState(() => new Set())
+
+  // Parent before its children, depth-first. Rows whose parent is missing (or
+  // that form a cycle) are appended at the end rather than silently dropped —
+  // a category you cannot see is a category you cannot fix.
+  const displayRows = useMemo(() => {
+    if (!tree) return rows
+    const byParent = {}
+    for (const r of rows) {
+      const k = r.parent_id || '__root__'
+      ;(byParent[k] = byParent[k] || []).push(r)
+    }
+    const out = []
+    const seen = new Set()
+    const walk = (parentKey, depth) => {
+      for (const r of byParent[parentKey] || []) {
+        if (seen.has(r.id)) continue
+        seen.add(r.id)
+        out.push({ ...r, __depth: depth })
+        walk(r.id, depth + 1)
+      }
+    }
+    walk('__root__', 0)
+    for (const r of rows) if (!seen.has(r.id)) out.push({ ...r, __depth: 0, __orphan: true })
+    return out
+  }, [rows, tree])
 
   const [dynOpts, setDynOpts] = useState({})
   async function loadDyn() {
@@ -122,12 +150,18 @@ export default function SimpleCrud({ table, fields, orderBy, manualId, canWrite,
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
+            {displayRows.map((r) => (
               <tr key={r.id}>
                 {isMembers && canWrite && (
                   <td><input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleOne(r.id)} style={{ width: 'auto' }} /></td>
                 )}
-                {fields.map((f) => <td key={f.key}>{renderCell(r[f.key], f, dynOpts)}</td>)}
+                {fields.map((f, i) => (
+                  <td key={f.key}>
+                    {tree && i === 0
+                      ? <TreeName row={r} value={r[f.key]} />
+                      : renderCell(r[f.key], f, dynOpts)}
+                  </td>
+                ))}
                 {canWrite && (
                   <td>
                     <button className="btn btn-ghost btn-sm" onClick={() => { setEditing(r); setOpen(true) }}>{t('edit')}</button>
@@ -148,6 +182,26 @@ export default function SimpleCrud({ table, fields, orderBy, manualId, canWrite,
         />
       )}
     </div>
+  )
+}
+
+// Indentation plus a branch glyph. Depth is drawn with em units so it tracks
+// the font rather than a pixel guess.
+function TreeName({ row, value }) {
+  const depth = row.__depth || 0
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      {depth > 0 && (
+        <span aria-hidden="true" style={{
+          display: 'inline-block', width: `${depth * 1.15}em`,
+          borderInlineStart: '2px solid var(--line-strong)', height: '1em',
+          marginInlineEnd: 2,
+        }} />
+      )}
+      {depth > 0 && <span aria-hidden="true" style={{ color: 'var(--text-faint)' }}>└</span>}
+      <span style={{ fontWeight: depth === 0 ? 700 : 400 }}>{value}</span>
+      {row.__orphan && <span className="pill" style={{ background: 'rgba(224,56,76,.12)', color: 'var(--danger)' }}>?</span>}
+    </span>
   )
 }
 

@@ -323,9 +323,28 @@ table.data { min-width: max-content; }
   .toolbar > .btn, .toolbar > select, .toolbar > input { flex: 1 1 100%; }
   .field input, .field select, .field textarea { font-size: 1rem; }  /* >=16px stops iOS zooming on focus */
 
-  .modal { max-height: 92vh; }
+  /* Capping the height without giving the modal a scroll container let its
+     children spill out of the white panel and onto the dimmed backdrop. A
+     flex column with a scrollable body fixes it AND keeps the title and the
+     Save/Cancel buttons in view while a long form scrolls underneath —
+     min-height:0 is what actually allows a flex child to scroll. */
+  .modal {
+    max-height: 92vh; display: flex; flex-direction: column; overflow: hidden;
+  }
+  .modal-head, .modal-foot { flex: 0 0 auto; }
+  .modal-body {
+    flex: 1 1 auto; min-height: 0;
+    overflow-y: auto; -webkit-overflow-scrolling: touch;
+  }
   .modal-foot { flex-wrap: wrap; }
   .modal-foot > .btn { flex: 1 1 auto; }
+  /* 48px of top padding on a 640px-tall phone is most of the screen. */
+  .overlay { padding: 12px 10px; align-items: center; }
+
+  /* The marker had a full row to itself, so one expense line occupied four.
+     Sharing a row with the remove button brings it down to three. */
+  .line-row > .line-scope { grid-column: auto; }
+  .line-row { row-gap: 6px; }
 }
 
 @media (max-width: 380px) {

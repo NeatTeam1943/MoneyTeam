@@ -8,6 +8,8 @@ import { useLookups } from '../lib/useLookups'
 import { useTeamScope } from '../context/TeamScopeContext'
 import { TeamScopeBadge } from '../components/TeamScope'
 import { money, amountColor, signedColor, lineTotal, qtyOf } from '../lib/format'
+import { projectAccounts, projectBudgets, newlyNegative, newlyOver as newlyOverOf } from '../domain/simulation'
+import { OPEN_STATUSES } from '../domain/constants'
 
 // What-if planner. It answers the question a mentor actually asks in front of
 // a wish list: "if I approve this lot, what breaks?"
@@ -68,7 +70,7 @@ export default function Simulation() {
   // Only things still genuinely outstanding can be "planned" — anything already
   // ordered or received is real spend and is already in the balances.
   const open = useMemo(() => items.filter(
-    (r) => ts.matches(r.team_scope) && (r.status === 'pending_approval' || r.status === 'approved')
+    (r) => ts.matches(r.team_scope) && OPEN_STATUSES.includes(r.status)
   ), [items, ts])
 
   const cost = lineTotal
@@ -89,52 +91,34 @@ export default function Simulation() {
   const pickByLevel = (levelId) => setPicked(new Set(priced.filter((r) => r.priority_level_id === levelId).map((r) => r.id)))
 
   // ---- projected account balances -----------------------------------------
-  const projectedAccounts = useMemo(() => balances.map((b) => {
-    const inc = incomes.reduce((s, r) => s + (r.account_id === b.id ? (Number(r.amount) || 0) : 0), 0)
-    // Each picked item and each ad-hoc row comes out of ITS OWN account, so a
-    // basket split across two funding sources drains both correctly instead of
-    // dumping the whole cost on one.
-    const out = selected.reduce((s, r) => s + (accountFor(r.id) === b.id ? cost(r) : 0), 0)
-      + scopedExtras.reduce((s, e) => s + ((e.account_id || fundFrom) === b.id ? (Number(e.amount) || 0) : 0), 0)
-    const after = Number(b.balance) + inc - out
-    return { ...b, before: Number(b.balance), delta: inc - out, after }
+  const projectedAccounts = useMemo(() => projectAccounts({
+    balances, incomes, picked: selected, extras: scopedExtras,
+    accountFor, defaultAccount: fundFrom,
   }), [balances, incomes, selected, scopedExtras, fundBy, fundFrom])   // eslint-disable-line react-hooks/exhaustive-deps
 
   const totalAfter = projectedAccounts.reduce((s, a) => s + a.after, 0)
-  const goingNegative = projectedAccounts.filter((a) => a.after < 0 && a.before >= 0)
+  const goingNegative = newlyNegative(projectedAccounts)
 
   // ---- projected budget burn ----------------------------------------------
   const budgetCat = useMemo(() => Object.fromEntries(budgets.map((b) => [b.id, b.category_id])), [budgets])
   const budgetForCategory = (categoryId) => (budgets.find((b) => b.category_id === categoryId) || {}).id || null
 
-  const projectedBudgets = useMemo(() => budgets.filter((b) => ts.matches(b.team_scope)).map((b) => {
-    const set = b.category_id ? lk.descendantsOf(b.category_id) : null
-    const inScope = (cid) => (b.category_id ? (cid && set.has(cid)) : true)
-    // NOT program-filtered, on purpose: a shared pot already consumed by the
-    // other program has that much less left, whichever program you are
-    // simulating. Filtering here would project money that is already gone.
-    const spent = lines.reduce(
-      (s, l) => s + (inScope(budgetCat[l.budget_id]) ? Number(l.amount) : 0), 0)
-    // An item lands on the budget of its own category, then rolls up the tree
-    // exactly the way real spend does.
-    const planned = selected.reduce((s, r) => s + (inScope(r.category_id) ? cost(r) : 0), 0)
-      + scopedExtras.reduce((s, e) => s + (inScope(e.category_id) ? (Number(e.amount) || 0) : 0), 0)
-    const amount = Number(b.amount)
-    const after = spent + planned
-    return {
-      id: b.id,
-      label: (b.category_id ? (lk.categoryName[b.category_id] || t('uncategorized')) : t('overall'))
-        + ((b.team_scope && b.team_scope !== 'both') ? ` · ${b.team_scope.toUpperCase()}` : ''),
-      amount, spent, planned, after,
-      remaining: amount - after,
-      pct: amount > 0 ? (after / amount) * 100 : 0,
-      wasOver: spent > amount && amount > 0,
-      nowOver: after > amount && amount > 0,
-    }
+  const projectedBudgets = useMemo(() => projectBudgets({
+    budgets: budgets.filter((b) => ts.matches(b.team_scope)),
+    lines,
+    picked: selected,
+    extras: scopedExtras,
+    budgetCategory: budgetCat,
+    inScopeFor: (b) => {
+      const set = b.category_id ? lk.descendantsOf(b.category_id) : null
+      return (cid) => (b.category_id ? (cid && set.has(cid)) : true)
+    },
+    labelFor: (b) => (b.category_id ? (lk.categoryName[b.category_id] || t('uncategorized')) : t('overall'))
+      + ((b.team_scope && b.team_scope !== 'both') ? ` · ${b.team_scope.toUpperCase()}` : ''),
   }).sort((a, b) => (a.label === t('overall') ? -1 : 0) - (b.label === t('overall') ? -1 : 0) || b.after - a.after),
     [budgets, lines, selected, scopedExtras, budgetCat, lk, t, ts])
 
-  const newlyOver = projectedBudgets.filter((b) => b.nowOver && !b.wasOver)
+  const newlyOver = newlyOverOf(projectedBudgets)
 
   // Items whose category has no budget at all — easy to miss, and they quietly
   // consume cash without showing up against any line.

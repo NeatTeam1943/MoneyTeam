@@ -12,6 +12,8 @@ import ShoppingForm from '../components/ShoppingForm'
 import TransactionForm from '../components/TransactionForm'
 import { useTeamScope } from '../context/TeamScopeContext'
 import { TeamScopeBadge } from '../components/TeamScope'
+import { filterRows, sortRows } from '../domain/shopping'
+import { BUYABLE_STATUSES } from '../domain/constants'
 
 const STATUSES = ['pending_approval', 'approved', 'ordered', 'received', 'cancelled']
 const axis = { fontSize: 12, fill: '#4c5570', fontFamily: 'Space Mono, monospace' }
@@ -99,36 +101,18 @@ export default function Shopping() {
     <th onClick={() => toggleSort(col)} style={{ cursor: 'pointer' }}>{label}{sort.col === col ? (sort.dir === 'asc' ? ' ↑' : ' ↓') : ''}</th>
   )
 
-  const filtered = useMemo(() => {
-    // Free-text search across everything you might actually remember about an
-    // item — its name, part number, supplier, category or notes.
-    const needle = q.trim().toLowerCase()
-    const hit = (r) => !needle || [r.name, r.sku, r.vendor, r.categoryName, r.priorityName, r.notes, r.description]
-      .some((v) => String(v || '').toLowerCase().includes(needle))
-    const out = enriched.filter((r) => hit(r) && (!fStatus || r.status === fStatus) && (!fPriority || r.priority_level_id === fPriority))
-    const { col, dir } = sort
-    const mul = dir === 'asc' ? 1 : -1
-    const val = (r) => {
-      if (col === 'priority') return rankOf[r.priority_level_id] ?? 999
-      if (col === 'est_price') return Number(r.est_price) || 0
-      if (col === 'quantity') return Number(r.quantity) || 0
-      if (col === 'category') return r.categoryName || ''
-      if (col === 'name') return r.name || ''
-      if (col === 'vendor') return r.vendor || ''
-      if (col === 'status') return t(r.status) || ''
-      return r[col] ?? ''
-    }
-    out.sort((a, b) => {
-      const av = val(a), bv = val(b)
-      if (av < bv) return -1 * mul
-      if (av > bv) return 1 * mul
-      return 0
-    })
-    return out
-  }, [enriched, fStatus, fPriority, q, rankOf, sort, t])
+  // Filtering, searching and sorting live in src/domain/shopping.js — pure,
+  // and pinned by scripts/golden-master-shopping-sim.mjs across every column,
+  // both directions and several search terms.
+  const filtered = useMemo(
+    () => sortRows(
+      filterRows(enriched, { search: q, status: fStatus, priority: fPriority }),
+      sort,
+      { rankOf, statusLabel: t }),
+    [enriched, fStatus, fPriority, q, rankOf, sort, t])
 
   // "requested" = still wanted (not received / cancelled)
-  const open = useMemo(() => enriched.filter((r) => r.status === 'pending_approval' || r.status === 'approved'), [enriched])
+  const open = useMemo(() => enriched.filter((r) => BUYABLE_STATUSES.includes(r.status)), [enriched])
 
   // Same direct/parent toggle as the Dashboard's "by category" chart —
   // 'direct' never rolls a child (e.g. אוכל) into its parent (תחרויות);
@@ -238,7 +222,7 @@ export default function Shopping() {
 
   const selectedItems = useMemo(() => filtered.filter((r) => selected.has(r.id)), [filtered, selected])
   const buyableItems = useMemo(
-    () => selectedItems.filter((r) => r.status === 'pending_approval' || r.status === 'approved'),
+    () => selectedItems.filter((r) => BUYABLE_STATUSES.includes(r.status)),
     [selectedItems])
   const allFilteredSelected = filtered.length > 0 && filtered.every((r) => selected.has(r.id))
   const buyPrefill = useMemo(() => {

@@ -12,6 +12,8 @@ import { money, monthKey, typeColor, amountColor } from '../lib/format'
 import { useTeamScope } from '../context/TeamScopeContext'
 import { linesByTransaction, attributableAmount, touchesScope } from '../lib/teamScope'
 import ScopeNotice from '../components/ScopeNotice'
+import { totalsOf, byMonthOf, overBudgetOf, topAncestorNameFactory, groupSum } from '../domain/ledger'
+import { GROUPING } from '../domain/constants'
 
 const axis = { fontSize: 12, fill: '#4c5570', fontFamily: 'Space Mono, monospace' }
 const CATCOLORS = ['#ff9100', '#4d63ff', '#b06bff', '#35c26b', '#ff4d5e', '#ffc14d', '#7aa0ff', '#d98aff']
@@ -84,75 +86,28 @@ export default function Dashboard() {
     (s) => !s.transaction_id && s.status !== 'cancelled' && s.status !== 'received' && ts.matches(s.team_scope)
   ).length, [waitingRows, ts])
 
-  const totals = useMemo(() => {
-    let income = 0, expense = 0, inkind = 0
-    for (const r of rows) {
-      if (r.type === 'income') income += Number(r.amount)
-      else if (r.type === 'expense') expense += Number(r.amount)
-      else if (r.type === 'in_kind') inkind += Number(r.amount)
-    }
-    // Net is deliberately unavailable under a partial filter. Income and bank
-    // balances are shared and are not split by program, so income arrives in
-    // full while expenses are narrowed — subtracting one from the other would
-    // produce a confidently wrong, and always flattering, number.
-    return { income, expense, inkind, net: ts.all ? income - expense : null }
-  }, [rows, ts])
+  const totals = useMemo(() => totalsOf(rows, ts.all), [rows, ts])
 
-  // Over-budget vs the season's total budget. Prefer the "Overall" budget row
-  // (category_id = null); if none set, fall back to the sum of category budgets.
-  // This compared program-FILTERED spend against UNFILTERED budgets, so under
-  // a single-program filter it measured one program's spending against both
-  // programs' money and reported almost no overspend. Both sides now agree:
-  // budgets are narrowed to the programs on screen, and the spend counted
-  // against them is never program-filtered — a shared pot is drained by
-  // whoever drains it.
-  const overBudget = useMemo(() => {
-    const inScopeBudgets = budgets.filter((b) => ts.matches(b.team_scope))
-    const overall = inScopeBudgets.find((b) => !b.category_id)
-    const total = overall ? Number(overall.amount) : inScopeBudgets.reduce((s, b) => s + Number(b.amount), 0)
-    const budgetIds = new Set(inScopeBudgets.map((b) => b.id))
-    const spend = (overall && ts.all)
-      ? allRows.reduce((s, r) => s + (r.type === 'expense' ? Number(r.amount) : 0), 0)
-      : allLines.reduce((s, l) => s + (budgetIds.has(l.budget_id) ? Number(l.amount) : 0), 0)
-    return { hasBudget: total > 0, over: Math.max(0, spend - total) }
-  }, [allRows, allLines, budgets, ts])
+  const overBudget = useMemo(() => overBudgetOf({
+    budgets, allRows, allLines, matchesTeam: ts.matches, allProgramsShown: ts.all,
+  }), [allRows, allLines, budgets, ts])
 
-  const byMonth = useMemo(() => {
-    const m = {}
-    for (const r of rows) {
-      if (r.type !== 'income' && r.type !== 'expense') continue
-      const k = monthKey(r.date)
-      m[k] = m[k] || { month: k, income: 0, expense: 0 }
-      m[k][r.type] += Number(r.amount)
-    }
-    return Object.values(m).sort((a, b) => a.month.localeCompare(b.month))
-  }, [rows])
+  const byMonth = useMemo(() => byMonthOf(rows, monthKey), [rows])
 
   const budgetCat = useMemo(() => Object.fromEntries(budgets.map((b) => [b.id, b.category_id])), [budgets])
 
   // Same direct/parent toggle as the Shopping and Budgets pages — 'direct'
   // never rolls a child (e.g. אוכל) into its parent (תחרויות); 'parent' sums
   // every category into its top-level ancestor.
-  const [categoryGrouping, setCategoryGrouping] = useState('direct')
-  const topAncestorName = useMemo(() => {
-    const byId = Object.fromEntries(categories.map((c) => [c.id, c]))
-    const cache = {}
-    return (id) => {
-      if (!id) return null
-      if (cache[id]) return cache[id]
-      let cur = byId[id]
-      if (!cur) return categoryName[id] || null
-      while (cur.parent_id && byId[cur.parent_id]) cur = byId[cur.parent_id]
-      cache[id] = cur.name
-      return cur.name
-    }
-  }, [categories, categoryName])
+  const [categoryGrouping, setCategoryGrouping] = useState(GROUPING.DIRECT)
+  const topAncestorName = useMemo(
+    () => topAncestorNameFactory(categories, categoryName), [categories, categoryName])
 
-  const byCategory = useMemo(() => group(lines, (l) => {
+  const byCategory = useMemo(() => groupSum(lines, (l) => {
     const catId = budgetCat[l.budget_id]
-    return (categoryGrouping === 'parent' ? topAncestorName(catId) : categoryName[catId]) || t('overall')
+    return (categoryGrouping === GROUPING.PARENT ? topAncestorName(catId) : categoryName[catId]) || t('overall')
   }), [lines, categoryName, budgetCat, t, categoryGrouping, topAncestorName])
-  const bySource = useMemo(() => group(rows.filter((r) => r.type === 'income'), (r) => sourceName[r.income_source_id] || '—'), [rows, sourceName])
+  const bySource = useMemo(() => groupSum(rows.filter((r) => r.type === 'income'), (r) => sourceName[r.income_source_id] || '—'), [rows, sourceName])
 
   return (
     <div>
@@ -235,10 +190,4 @@ function Stat({ k, v, c, small }) {
       <div className="v" style={{ color: c, fontSize: small ? 20 : 26 }}>{v}</div>
     </div>
   )
-}
-
-function group(rows, keyFn) {
-  const m = {}
-  for (const r of rows) { const k = keyFn(r); m[k] = (m[k] || 0) + Number(r.amount) }
-  return Object.entries(m).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
 }

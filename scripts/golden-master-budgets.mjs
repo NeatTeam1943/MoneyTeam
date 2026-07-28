@@ -9,9 +9,9 @@
 // claim rather than a hope.
 
 import fs from 'fs'
-import { buildBudgetRows } from '../src/domain/budgets.js'
+import { buildBudgetRows } from '/tmp/budgets.bundle.mjs'
 
-const D = JSON.parse(fs.readFileSync(process.env.GM_DATA || '/tmp/gm.json', 'utf8'))
+const D = JSON.parse(fs.readFileSync('/tmp/gm.json', 'utf8'))
 
 // ---- shared fixtures -------------------------------------------------------
 const kids = {}

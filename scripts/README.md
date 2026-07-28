@@ -35,3 +35,26 @@ comments without the plugin installed. Always pass `--no-inline-config`:
 ```bash
 npx eslint --no-inline-config --rule '{"no-undef":"error"}' --ext .js,.jsx src/
 ```
+
+## The full set
+
+| script | pins | assertions |
+|---|---|---|
+| `golden-master-budgets.mjs` | budget roll-up, shared-pot accounting | 6 combinations |
+| `golden-master-ledger.mjs` | totals, by month/category/source/vendor/account, cumulative, over-budget | 33 |
+| `golden-master-shopping-sim.mjs` | shopping filter/search/sort, account + budget projections | 59 |
+
+Run all three after any change to `src/domain/`:
+
+```bash
+for m in budgets ledger shopping simulation; do
+  npx esbuild src/domain/$m.js --bundle --format=esm --outfile=/tmp/$m.bundle.mjs
+done
+node scripts/golden-master-budgets.mjs
+node scripts/golden-master-ledger.mjs
+node scripts/golden-master-shopping-sim.mjs
+```
+
+Each holds a frozen copy of the pre-refactor implementation. If a real
+behaviour change is ever wanted, change the reference copy in the same commit
+and say so in the message — otherwise the check is meaningless.

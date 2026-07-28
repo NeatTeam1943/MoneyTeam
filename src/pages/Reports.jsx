@@ -10,6 +10,11 @@ import { useLookups } from '../lib/useLookups'
 import { useTeamScope } from '../context/TeamScopeContext'
 import { linesByTransaction, attributableAmount, touchesScope, spendByScope } from '../lib/teamScope'
 import ScopeNotice from '../components/ScopeNotice'
+import {
+  totalsOf, byMonthOf, cumulativeOf, byCategoryOf, bySourceOf,
+  byVendorOf, byAccountOf, topExpensesOf,
+} from '../domain/ledger'
+import { TOP_EXPENSES_LIMIT, TOP_VENDORS_LIMIT, TX } from '../domain/constants'
 import { money, fmtDate, monthKey, typeColor, amountColor, signedColor } from '../lib/format'
 import { exportReport } from '../lib/export'
 
@@ -99,90 +104,30 @@ export default function Reports() {
     () => lines.filter((l) => ts.matches(l.team_scope) && inPeriod(l.transactions?.date)),
     [lines, ts, from, to])  // eslint-disable-line react-hooks/exhaustive-deps
 
-  const totals = useMemo(() => {
-    let income = 0, expense = 0, inkind = 0
-    for (const r of scoped) {
-      if (r.type === 'income') income += Number(r.amount)
-      else if (r.type === 'expense') expense += Number(r.amount)
-      else if (r.type === 'in_kind') inkind += Number(r.amount)
-    }
-    // See Dashboard: net is not a real quantity per program while income is
-    // shared and unsplit.
-    return { income, expense, inkind, net: ts.all ? income - expense : null }
-  }, [scoped, ts])
+  const totals = useMemo(() => totalsOf(scoped, ts.all), [scoped, ts])
 
-  const byMonth = useMemo(() => {
-    const m = {}
-    for (const r of scoped) {
-      if (r.type !== 'income' && r.type !== 'expense') continue
-      const k = monthKey(r.date)
-      m[k] = m[k] || { month: k, income: 0, expense: 0 }
-      m[k][r.type] += Number(r.amount)
-    }
-    return Object.values(m).sort((a, b) => a.month.localeCompare(b.month))
-  }, [scoped])
+  const byMonth = useMemo(() => byMonthOf(scoped, monthKey), [scoped])
 
   const budgetCat = useMemo(() => Object.fromEntries(budgets.map((b) => [b.id, b.category_id])), [budgets])
 
-  const byCategory = useMemo(() => {
-    const m = {}
-    for (const l of scopedLines) {
-      const k = lk.categoryName[budgetCat[l.budget_id]] || t('uncategorized')
-      m[k] = (m[k] || 0) + Number(l.amount)
-    }
-    return Object.entries(m).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
-  }, [scopedLines, budgetCat, lk.categoryName, t])
+  const byCategory = useMemo(
+    () => byCategoryOf(scopedLines, (l) => lk.categoryName[budgetCat[l.budget_id]] || t('uncategorized')),
+    [scopedLines, budgetCat, lk.categoryName, t])
 
-  const bySource = useMemo(() => {
-    const m = {}
-    for (const r of scoped) {
-      if (r.type !== 'income') continue
-      const k = lk.sourceName[r.income_source_id] || '—'
-      m[k] = (m[k] || 0) + Number(r.amount)
-    }
-    return Object.entries(m).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
-  }, [scoped, lk.sourceName])
+  const bySource = useMemo(
+    () => bySourceOf(scoped, (r) => lk.sourceName[r.income_source_id] || '—'),
+    [scoped, lk.sourceName])
 
-  // Net movement per account for the period. A transfer leaves one account and
-  // lands in another, so it appears on both sides — the pair nets to zero
-  // overall but still shows where money actually moved.
-  const byAccount = useMemo(() => {
-    const m = {}
-    const add = (id, v) => { if (id) m[id] = (m[id] || 0) + v }
-    for (const r of scoped) {
-      const amt = Number(r.amount)
-      if (r.type === 'income') add(r.account_id, amt)
-      else if (r.type === 'expense') add(r.account_id, -amt)
-      else if (r.type === 'transfer') { add(r.account_id, -amt); add(r.to_account_id, amt) }
-    }
-    return Object.entries(m)
-      .map(([id, value]) => ({ name: lk.accountName[id] || '—', value }))
-      .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
-  }, [scoped, lk.accountName])
+  const byAccount = useMemo(
+    () => byAccountOf(scoped, (id) => lk.accountName[id] || '—'),
+    [scoped, lk.accountName])
 
-  // Running balance across the period — the shape that answers "are we
-  // drifting down?", which the per-month bars cannot show on their own.
-  const cumulative = useMemo(() => {
-    let run = 0
-    return byMonth.map((m) => {
-      run += m.income - m.expense
-      return { month: m.month, net: m.income - m.expense, cumulative: run }
-    })
-  }, [byMonth])
+  const cumulative = useMemo(() => cumulativeOf(byMonth), [byMonth])
 
-  const byVendor = useMemo(() => {
-    const m = {}
-    for (const r of scoped) {
-      if (r.type !== 'expense') continue
-      const k = r.vendor || t('uncategorized')
-      m[k] = (m[k] || 0) + Number(r.amount)
-    }
-    return Object.entries(m).map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value).slice(0, 10)
-  }, [scoped, t])
+  const byVendor = useMemo(
+    () => byVendorOf(scoped, (r) => r.vendor || t('uncategorized'), TOP_VENDORS_LIMIT),
+    [scoped, t])
 
-  // Counts each LINE under its own marking, so a mixed receipt is split three
-  // ways instead of being dumped entirely into "shared".
   const byScope = useMemo(() => {
     const inPeriodTx = rows.filter((r) => inPeriod(r.date))
     const m = spendByScope(inPeriodTx, byTx)
@@ -190,12 +135,9 @@ export default function Reports() {
       .map(([k, value]) => ({ key: k, name: t('scope_' + k), value }))
   }, [rows, byTx, t, from, to])   // eslint-disable-line react-hooks/exhaustive-deps
 
-  const expenseCount = scoped.filter((r) => r.type === 'expense').length
+  const expenseCount = scoped.filter((r) => r.type === TX.EXPENSE).length
 
-  const topExpenses = useMemo(
-    () => scoped.filter((r) => r.type === 'expense')
-      .sort((a, b) => Number(b.amount) - Number(a.amount)).slice(0, 10),
-    [scoped])
+  const topExpenses = useMemo(() => topExpensesOf(scoped, TOP_EXPENSES_LIMIT), [scoped])
 
   function doExport() {
     exportReport({

@@ -101,6 +101,7 @@ export default function Budgets() {
   // This component's job is to say WHAT to render, not to work out the numbers.
   const buildRows = (grouping) => buildBudgetRows(grouping, {
     budgets: scopedBudgets,
+    allBudgets: budgets,
     expenses: scopedExpenses,
     shopping: scopedShopping,
     budgetCategory: budgetCat,

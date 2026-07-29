@@ -46,8 +46,23 @@ export function requestedOn(shopping, inScope) {
 }
 
 /** True when the child budgets under this one already exceed its own amount. */
-export function childrenOverspend(budget, budgets, descendants) {
+/** True when the budgets this one owns already allocate more than it holds.
+ *
+ *  The old version summed every budget on a descendant CATEGORY, whatever its
+ *  program. Once a category carries an FRC, an FTC and a shared pot, a single
+ *  parent pot is naturally smaller than all of them together, so the warning
+ *  fired on healthy budgets — under an FTC view it counted FRC children whose
+ *  money belongs to the FRC parent and which were not even on screen.
+ *
+ *  Ownership answers it exactly: only the budgets that actually roll into this
+ *  one are counted. */
+export function childrenOverspend(budget, budgets, descendants, ownership) {
   if (!budget.category_id) return false
+  if (ownership) {
+    const childSum = budgets.reduce((sum, x) =>
+      (x.id !== budget.id && ownership[x.id] === budget.id) ? sum + toNumber(x.amount) : sum, 0)
+    return childSum > toNumber(budget.amount)
+  }
   const childSum = budgets.reduce((sum, x) =>
     (x.category_id && x.category_id !== budget.category_id && descendants.has(x.category_id))
       ? sum + toNumber(x.amount) : sum, 0)
@@ -105,12 +120,20 @@ export function buildBudgetRows(grouping, deps) {
   const {
     budgets, expenses, shopping, budgetCategory,
     descendantsOf, labelFor, matchesTeam, allTicked, parentOf,
+    // Every budget in the season, filtered or not. The program checklist
+    // decides what is DISPLAYED; it must not change how full a pot is. Building
+    // ownership from the visible subset alone detached the FRC children from
+    // the overall pot, so under an FTC view "כללי" reported ₪59,468 of
+    // ₪119,695 — half the season's spending vanished from the one figure that
+    // is supposed to cover all of it.
+    allBudgets,
   } = deps
+  const ownershipSource = allBudgets || budgets
 
   // Spend is attributed through the ownership tree, so a line lands on exactly
   // one budget and rolls up exactly one chain. Requests are still matched by
   // category, because a wish-list item names a category and has no budget yet.
-  const ownership = parentOf ? buildOwnership(budgets, parentOf) : null
+  const ownership = parentOf ? buildOwnership(ownershipSource, parentOf) : null
 
   // A line whose budget was deleted keeps its amount and its category — the
   // foreign key is ON DELETE SET NULL, so nothing is lost — but it stops
@@ -124,7 +147,7 @@ export function buildBudgetRows(grouping, deps) {
   const effectiveBudgetId = (l) => {
     if (l.budget_id) return l.budget_id
     if (!parentOf || !l.category_id) return null
-    return resolveBudget(l.category_id, l.team_scope, budgets, parentOf).budget?.id ?? null
+    return resolveBudget(l.category_id, l.team_scope, ownershipSource, parentOf).budget?.id ?? null
   }
 
   return budgets.map((b) => {
@@ -168,7 +191,7 @@ export function buildBudgetRows(grouping, deps) {
       requested: roundMoney(requestedOn(shopping, inScope)),
       remaining: roundMoney(amount - spent),
       pct: amount > 0 ? Math.min(PCT_CEILING, roundMoney((spent / amount) * 100)) : 0,
-      childOver: childrenOverspend(b, budgets, descendants),
+      childOver: childrenOverspend(b, ownershipSource, descendants, ownership),
     }
   }).sort(byOverallThenAmount)
 }

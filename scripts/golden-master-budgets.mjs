@@ -32,6 +32,12 @@ const mkTs = (picked) => {
   return { all, matches: (s) => all || !s || s === 'both' || p.has(s) }
 }
 
+// Rounding was added deliberately (the "-0.00 in red" fix): spent is a sum of
+// floats, so amount - spent lands at -1.45e-11 for a budget that is exactly
+// used up, which Intl prints as "-0.00" and paints as a deficit. The reference
+// rounds too, so the check pins the corrected behaviour.
+const R = (n) => (Math.round((Number(n) || 0) * 100) / 100) || 0
+
 // ---- REFERENCE: the original inline implementation --------------------------
 function referenceRows(grouping, ts) {
   const scopedBudgets = D.budgets.filter((b) => ts.matches(b.team_scope))
@@ -56,9 +62,9 @@ function referenceRows(grouping, ts) {
     return {
       ...b,
       label: isOverall ? t('overall') : (categoryName[b.category_id] || t('uncategorized')),
-      spent, spentInScope, requested,
-      remaining: Number(b.amount) - spent,
-      pct: b.amount > 0 ? Math.min(999, (spent / Number(b.amount)) * 100) : 0,
+      spent: R(spent), spentInScope: R(spentInScope), requested: R(requested),
+      remaining: R(Number(b.amount) - spent),
+      pct: b.amount > 0 ? Math.min(999, R((spent / Number(b.amount)) * 100)) : 0,
       childOver: (() => {
         if (isOverall) return false
         const childSum = scopedBudgets.reduce((sum, x) =>

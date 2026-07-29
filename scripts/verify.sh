@@ -7,6 +7,15 @@
 # it. Run this instead of eyeballing anything.
 set -uo pipefail
 fail=0
+
+# Rebuild the bundles the golden masters import. Without this the checks happily
+# exercise whatever was last written to /tmp — a stale artefact from an earlier
+# edit — and report a pass for code that no longer exists. That is worse than no
+# check at all, because it is trusted.
+for m in budgets ledger shopping simulation; do
+  npx --yes esbuild@0.21.5 "src/domain/$m.js" --bundle --format=esm \
+    --outfile="/tmp/$m.bundle.mjs" >/dev/null 2>&1 || { echo "  bundle failed: $m"; exit 1; }
+done
 step() {
   printf '  %-34s' "$1"; shift
   out=$("$@" 2>&1); code=$?

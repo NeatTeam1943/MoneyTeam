@@ -48,19 +48,53 @@ function refProjectAccounts(balances, incomes, picked, extras, fundBy, fundFrom)
     return { ...b, before: Number(b.balance), delta: inc - out, after: Number(b.balance) + inc - out }
   })
 }
+// UPDATED DELIBERATELY. The original reference matched spend by CATEGORY,
+// which double-counted once FRC/FTC/shared pots shared a category — each
+// showed the others' money and the simulation reported 498%, 1176%, 7742%.
+// The Budgets page was fixed for this; projectBudgets was not. The reference
+// now mirrors the ownership model, so the check pins the corrected behaviour
+// rather than the bug.
+const ownershipRef = (budgets) => {
+  const byCat = {}
+  for (const b of budgets) if (b.category_id) (byCat[b.category_id] = byCat[b.category_id] || []).push(b)
+  const overall = budgets.filter((b) => !b.category_id)
+  const parentOfCat = Object.fromEntries(D.cats.map((c) => [c.id, c.parent_id]))
+  const map = {}
+  for (const b of budgets) {
+    if (!b.category_id) { map[b.id] = null; continue }
+    let cur = parentOfCat[b.category_id]
+    let anc = null
+    while (cur) { if (byCat[cur]?.length) { anc = cur; break } cur = parentOfCat[cur] }
+    const cands = anc ? byCat[anc].filter((x) => x.id !== b.id) : overall
+    map[b.id] = (cands.find((x) => x.team_scope === b.team_scope)
+      || cands.find((x) => x.team_scope === 'both') || null)?.id ?? null
+  }
+  return map
+}
+const ownedRef = (id, map) => {
+  const children = {}
+  for (const [k, v] of Object.entries(map)) if (v) (children[v] = children[v] || []).push(k)
+  const out = new Set([id]); const st = [id]
+  while (st.length) { const c = st.pop(); for (const k of children[c] || []) if (!out.has(k)) { out.add(k); st.push(k) } }
+  return out
+}
+
 function refProjectBudgets(budgets, lines, picked, extras) {
+  const own = ownershipRef(budgets)
   return budgets.map((b) => {
     const set = b.category_id ? desc(b.category_id) : null
     const inScope = (cid) => (b.category_id ? (cid && set.has(cid)) : true)
-    const spent = lines.reduce((s, l) => s + (inScope(budgetCat[l.budget_id]) ? Number(l.amount) : 0), 0)
+    const mine = ownedRef(b.id, own)
+    const spent = lines.reduce((s, l) => s + (mine.has(l.budget_id) || (!b.category_id && l.budget_id == null) ? Number(l.amount) : 0), 0)
     const planned = picked.reduce((s, r) => s + (inScope(r.category_id) ? lineTotal(r) : 0), 0)
       + extras.reduce((s, e) => s + (inScope(e.category_id) ? (Number(e.amount) || 0) : 0), 0)
     const amount = Number(b.amount)
     const after = spent + planned
+    const R = (n) => (Math.round((Number(n) || 0) * 100) / 100) || 0
     return { id: b.id, label: b.category_id ? (catName[b.category_id] || t('uncategorized')) : t('overall'),
-      amount, spent, planned, after, remaining: amount - after,
-      pct: amount > 0 ? (after / amount) * 100 : 0,
-      wasOver: spent > amount && amount > 0, nowOver: after > amount && amount > 0 }
+      amount: R(amount), spent: R(spent), planned: R(planned), after: R(after), remaining: R(amount - after),
+      pct: amount > 0 ? R((after / amount) * 100) : 0,
+      wasOver: R(spent - amount) > 0 && amount > 0, nowOver: R(after - amount) > 0 && amount > 0 }
   })
 }
 
@@ -95,6 +129,7 @@ eq('sim/accounts', refProjectAccounts(D.balances, incomes, picked, extras, fundB
     accountFor: (id) => fundBy[id] || fundFrom, defaultAccount: fundFrom }))
 eq('sim/budgets', refProjectBudgets(D.budgets, D.lines, picked, extras),
   projectBudgets({ budgets: D.budgets, lines: D.lines, picked, extras, budgetCategory: budgetCat,
+    parentOf: Object.fromEntries(D.cats.map((c) => [c.id, c.parent_id])),
     inScopeFor: (b) => { const set = b.category_id ? desc(b.category_id) : null
       return (cid) => (b.category_id ? (cid && set.has(cid)) : true) },
     labelFor: (b) => (b.category_id ? (catName[b.category_id] || t('uncategorized')) : t('overall')) }))

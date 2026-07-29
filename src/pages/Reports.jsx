@@ -14,8 +14,9 @@ import {
   totalsOf, byMonthOf, cumulativeOf, byCategoryOf, bySourceOf,
   byVendorOf, byAccountOf, topExpensesOf,
 } from '../domain/ledger'
-import { TOP_EXPENSES_LIMIT, TOP_VENDORS_LIMIT, TX } from '../domain/constants'
-import { money, fmtDate, monthKey, typeColor, amountColor, signedColor } from '../lib/format'
+import { TOP_EXPENSES_LIMIT, TOP_VENDORS_LIMIT, TX, GROUPING, OPEN_STATUSES } from '../domain/constants'
+import { buildBudgetRows } from '../domain/budgets'
+import { money, fmtDate, monthKey, typeColor, amountColor, signedColor, lineTotal } from '../lib/format'
 import { exportReport } from '../lib/export'
 
 const axis = { fontSize: 12, fill: '#4c5570', fontFamily: 'Space Mono, monospace' }
@@ -58,6 +59,7 @@ export default function Reports() {
   const [rows, setRows] = useState([])
   const [lines, setLines] = useState([])
   const [budgets, setBudgets] = useState([])
+  const [shopping, setShopping] = useState([])
   const [loading, setLoading] = useState(true)
 
   const [preset, setPreset] = useState('season')
@@ -74,14 +76,16 @@ export default function Reports() {
     if (!activeId) { setLoading(false); return }
     if (rows.length === 0) setLoading(true)
     try {
-      const [tx, tl, bg] = await withTimeout(Promise.all([
+      const [tx, tl, bg, sh] = await withTimeout(Promise.all([
         supabase.from('ledger_transactions').select('*').eq('season_id', activeId),
         supabase.from('ledger_lines_full').select('transaction_id,amount,budget_id,description,team_scope,category_id,season_id,date,tx_team_scope').eq('season_id', activeId),
         supabase.from('budgets').select('*').eq('season_id', activeId),
+        supabase.from('shopping_items').select('*').eq('season_id', activeId),
       ]))
       if (!tx.error) setRows(tx.data || [])
       if (!tl.error) setLines(tl.data || [])
       if (!bg.error) setBudgets(bg.data || [])
+      if (!sh.error) setShopping(sh.data || [])
     } catch (e) {
       if (e.message === 'timeout') toast.error(t('loadTimedOut'))
     } finally { setLoading(false) }
@@ -141,6 +145,38 @@ export default function Reports() {
 
   const expenseCount = scoped.filter((r) => r.type === TX.EXPENSE).length
 
+  // Budget utilisation, using the same ownership model as the Budgets page so
+  // the two never disagree.
+  const budgetRows = useMemo(() => buildBudgetRows(GROUPING.PARENT, {
+    budgets: budgets.filter((b) => ts.matches(b.team_scope)),
+    expenses: lines,
+    shopping,
+    budgetCategory: Object.fromEntries(budgets.map((b) => [b.id, b.category_id])),
+    descendantsOf: lk.descendantsOf,
+    labelFor: (b) => (b.category_id ? (lk.categoryName[b.category_id] || t('uncategorized')) : t('overall'))
+      + ((b.team_scope && b.team_scope !== 'both') ? ` · ${b.team_scope.toUpperCase()}` : ''),
+    matchesTeam: ts.matches,
+    allTicked: ts.all,
+    parentOf: lk.parentOf,
+  }).filter((r) => r.amount > 0 || r.spent > 0),
+    [budgets, lines, shopping, lk, t, ts])
+
+  const budgetChart = useMemo(
+    () => budgetRows.map((r) => ({ name: r.label, [t('spent')]: r.spent, [t('budget')]: r.amount })),
+    [budgetRows, t])
+
+  // Wish list still outstanding, by category — the Shopping page's view.
+  const requestedChart = useMemo(() => {
+    const m = {}
+    for (const r of shopping) {
+      if (!OPEN_STATUSES.includes(r.status)) continue
+      if (!ts.matches(r.team_scope)) continue
+      const k = lk.categoryName[r.category_id] || t('uncategorized')
+      m[k] = (m[k] || 0) + lineTotal(r)
+    }
+    return Object.entries(m).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
+  }, [shopping, lk.categoryName, t, ts])
+
   const topExpenses = useMemo(() => topExpensesOf(scoped, TOP_EXPENSES_LIMIT), [scoped])
 
   function doExport() {
@@ -190,8 +226,7 @@ export default function Reports() {
         <div className="panel empty">{t('noRowsInPeriod')}</div>
       ) : (
         <>
-          <div className="section-title">{t('incomeVsExpense')}</div>
-          <div className="panel panel-pad chart-box" style={{ direction: 'ltr' }}>
+          <Chart title={t('incomeVsExpense')} note={t('noteIncomeVsExpense')}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={byMonth} margin={{ top: 6, right: 8, left: 8, bottom: 6 }}>
                 <CartesianGrid stroke="#dde2ee" vertical={false} />
@@ -202,10 +237,9 @@ export default function Reports() {
                 <Bar dataKey="expense" name={t('expense')} fill={typeColor.expense} radius={[3, 3, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
-          </div>
+          </Chart>
 
-          <div className="section-title">{t('cumulativeNet')}</div>
-          <div className="panel panel-pad chart-box" style={{ direction: 'ltr' }}>
+          <Chart title={t('cumulativeNet')} note={t('noteCumulative')}>
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={cumulative} margin={{ top: 6, right: 8, left: 8, bottom: 6 }}>
                 <CartesianGrid stroke="#dde2ee" vertical={false} />
@@ -217,12 +251,10 @@ export default function Reports() {
                 <Line type="monotone" dataKey="net" name={t('monthlyNet')} stroke="#ff9100" strokeWidth={1.5} dot={false} />
               </LineChart>
             </ResponsiveContainer>
-          </div>
+          </Chart>
 
           <div className="charts" style={{ marginTop: 16 }}>
-            <div className="panel panel-pad">
-              <div className="section-title" style={{ marginTop: 0 }}>{t('byVendor')}</div>
-              <div className="chart-box" style={{ direction: 'ltr' }}>
+            <Chart title={t('byVendor')} note={t('noteByVendor')}>
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={byVendor} layout="vertical" margin={{ left: 8, right: 16 }}>
                     <XAxis type="number" tick={axis} />
@@ -233,11 +265,8 @@ export default function Reports() {
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
-              </div>
-            </div>
-            <div className="panel panel-pad">
-              <div className="section-title" style={{ marginTop: 0 }}>{t('byScope')}</div>
-              <div className="chart-box" style={{ direction: 'ltr' }}>
+            </Chart>
+            <Chart title={t('byScope')} note={t('noteByScope')}>
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie data={byScope} dataKey="value" nameKey="name" outerRadius={95} innerRadius={50}>
@@ -247,9 +276,66 @@ export default function Reports() {
                     <Legend wrapperStyle={{ fontSize: 12 }} />
                   </PieChart>
                 </ResponsiveContainer>
-              </div>
-            </div>
+            </Chart>
           </div>
+
+
+          {/* The same views the other pages show, so a report is the whole
+              picture rather than a subset someone has to supplement. */}
+          <div className="charts" style={{ marginTop: 16 }}>
+            <Chart title={t('byCategory')} note={t('noteByCategoryChart')}>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={byCategory} dataKey="value" nameKey="name" outerRadius={90} innerRadius={48}>
+                    {byCategory.map((_, i) => <Cell key={i} fill={CATFILL[i % CATFILL.length]} />)}
+                  </Pie>
+                  <Tooltip contentStyle={tip} formatter={(v) => money(v)} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </Chart>
+
+            <Chart title={t('bySource')} note={t('noteBySourceChart')}>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={bySource} dataKey="value" nameKey="name" outerRadius={90} innerRadius={48}>
+                    {bySource.map((_, i) => <Cell key={i} fill={CATFILL[(i + 3) % CATFILL.length]} />)}
+                  </Pie>
+                  <Tooltip contentStyle={tip} formatter={(v) => money(v)} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </Chart>
+          </div>
+
+          <Chart title={t('budgetUse')} note={t('noteBudgetUse')} height="chart-box-tall">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={budgetChart} layout="vertical" margin={{ left: 8, right: 16 }}>
+                <CartesianGrid stroke="#dde2ee" horizontal={false} />
+                <XAxis type="number" tick={axis} />
+                <YAxis type="category" dataKey="name" tick={axis} width={150} interval={0} />
+                <Tooltip contentStyle={tip} formatter={(v) => money(v)} />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Bar dataKey={t('budget')} fill="#c6cde0" radius={[0, 3, 3, 0]} />
+                <Bar dataKey={t('spent')} fill={typeColor.expense} radius={[0, 3, 3, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </Chart>
+
+          {requestedChart.length > 0 && (
+            <Chart title={t('requestedByCategory')} note={t('noteRequested')}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={requestedChart} layout="vertical" margin={{ left: 8, right: 16 }}>
+                  <XAxis type="number" tick={axis} />
+                  <YAxis type="category" dataKey="name" tick={axis} width={150} interval={0} />
+                  <Tooltip contentStyle={tip} formatter={(v) => money(v)} />
+                  <Bar dataKey="value" radius={[0, 3, 3, 0]}>
+                    {requestedChart.map((_, i) => <Cell key={i} fill={CATFILL[(i + 5) % CATFILL.length]} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </Chart>
+          )}
 
           <div className="grid-2" style={{ marginTop: 16 }}>
             <Breakdown title={t('byCategory')} rows={byCategory} />
@@ -274,6 +360,19 @@ export default function Reports() {
           </div>
         </>
       )}
+    </div>
+  )
+}
+
+// A chart with its title and a one-line note. The note matters: a reader who
+// has to work out what "מאזן מצטבר" counts will guess, and guessing at a
+// finance figure is how the wrong number gets quoted in a meeting.
+function Chart({ title, note, height, children }) {
+  return (
+    <div className="panel panel-pad">
+      <div className="section-title" style={{ marginTop: 0, marginBottom: 2 }}>{title}</div>
+      <p style={{ color: 'var(--text-faint)', fontSize: 12, margin: '0 0 8px' }}>{note}</p>
+      <div className={height || 'chart-box'} style={{ direction: 'ltr' }}>{children}</div>
     </div>
   )
 }

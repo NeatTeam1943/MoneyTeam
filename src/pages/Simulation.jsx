@@ -115,6 +115,9 @@ export default function Simulation() {
     },
     labelFor: (b) => (b.category_id ? (lk.categoryName[b.category_id] || t('uncategorized')) : t('overall'))
       + ((b.team_scope && b.team_scope !== 'both') ? ` · ${b.team_scope.toUpperCase()}` : ''),
+    // Same ownership model as the Budgets page — without it each program's pot
+    // reports the whole category's spend.
+    parentOf: lk.parentOf,
   }).sort((a, b) => (a.label === t('overall') ? -1 : 0) - (b.label === t('overall') ? -1 : 0) || b.after - a.after),
     [budgets, lines, selected, scopedExtras, budgetCat, lk, t, ts])
 

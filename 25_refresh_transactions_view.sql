@@ -3,19 +3,27 @@
 --
 --  transactions_view was created with `t.*`, which Postgres expands and
 --  freezes at creation time. Migration 22 added approval, proposed_by,
---  decided_by, decided_at and decision_note to transactions — none of which
---  the view picked up, because a view does not track its source table's shape.
+--  decided_by, decided_at and decision_note to transactions; the view never
+--  picked them up, because a view does not track its source table's shape.
 --
---  The consequence was quiet rather than loud: the ledger page reads this
---  view, so every row came back with approval undefined, the pending filter
---  matched nothing, and the mentor approval queue simply never appeared.
---  Nothing errored.
+--  The failure was quiet: the ledger page reads this view, so every row came
+--  back with approval undefined, the pending filter matched nothing, and the
+--  mentor approval queue could never appear. Nothing errored.
 --
 --  Migration 13 documented this exact hazard when it rebuilt the same view.
 --  Migration 22 changed the underlying table and did not.
 --
---  CREATE OR REPLACE cannot insert columns before existing ones, so this drops
---  and recreates. security_invoker keeps RLS evaluated as the calling user.
+--  PROPOSER NAME — read this before "improving" it.
+--  A first version of this migration joined auth.users to show who proposed a
+--  transaction. That made the view unreadable: it is security_invoker, so the
+--  join runs with the caller's rights, and `authenticated` has no SELECT on
+--  auth.users. Every query against the view failed with "permission denied for
+--  table users", which the app surfaced as an empty ledger — the page loaded
+--  and simply showed nothing.
+--
+--  public.members holds full_name and IS readable under the existing policies,
+--  so the name comes from there. Do not reach into auth.* from a
+--  security_invoker view.
 --
 --  Run after 22. Re-runnable.
 -- ============================================================================
@@ -31,8 +39,8 @@ select
     when t.payer_name is not null then '***'
     else null
   end as payer_display,
-  pu.raw_user_meta_data ->> 'full_name' as proposer_name
+  m.full_name as proposer_name
 from public.transactions t
-left join auth.users pu on pu.id = t.proposed_by;
+left join public.members m on m.id = t.proposed_by;
 
 grant select on public.transactions_view to authenticated;

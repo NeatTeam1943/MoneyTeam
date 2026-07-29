@@ -151,13 +151,33 @@ label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 
    scrollbar. Letting the item shrink is what actually fixes it; the font
    scaling below is what keeps it legible once it can. */
 .stats > * { min-width: 0; }
-.stat { min-width: 0; overflow: hidden; }
+/* The figure is sized from the CARD's width, not the viewport's.
+   The constraint on "₪119,695.45" is how wide its own card is — which depends
+   on the grid, the sidebar and the padding, none of which a vw unit knows
+   about. Sizing by vw meant the text could still be wider than its box, and
+   `overflow: hidden` then cut it off silently: in RTL the clipped edge is the
+   START of the string, so the ₪ was the first thing to disappear.
+
+   container-type: inline-size makes cqi ("1% of this container's width")
+   available, so the font tracks the actual box. overflow is no longer hidden —
+   if a number ever does exceed its card, showing it slightly cramped is far
+   better than quietly deleting the currency symbol. */
+.stat { min-width: 0; container-type: inline-size; }
 .stat { padding: 16px 18px; }
-.stat .k { color: var(--text-faint); font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.stat .k {
+  color: var(--text-faint); font-size: 12px; font-weight: 700;
+  letter-spacing: .04em; text-transform: uppercase;
+  /* A long label wraps rather than widening the card. */
+  overflow-wrap: anywhere;
+}
 .stat .v {
   font-family: var(--font-mono); font-weight: 700; margin-top: 8px;
-  font-size: clamp(1rem, 4.4vw, 1.625rem);
+  /* Fallback for anything without container queries: viewport-based, as before. */
+  font-size: clamp(0.85rem, 4.4vw, 1.625rem);
   white-space: nowrap; min-width: 0;
+}
+@supports (container-type: inline-size) {
+  .stat .v { font-size: clamp(0.85rem, 11cqi, 1.625rem); }
 }
 
 /* ---------- Table ---------- */
@@ -306,7 +326,16 @@ html, body { max-width: 100%; overflow-x: hidden; }
 
 /* Narrow: let it be as wide as it needs and scroll inside its wrapper. */
 @media (max-width: 900px) {
-  table.data { min-width: max-content; }
+  /* ONLY tables that sit inside a scrolling wrapper. max-content means "never
+     compress", which is right for the ledger — it has more columns than a phone
+     has width and squeezing the figures makes them unreadable, so .table-wrap
+     scrolls instead. Applied to every table it also widened the small tables on
+     the Reports page, which have no wrapper: they simply overflowed their panel
+     and the amount and % columns were clipped off-screen with no way to reach
+     them. A three-column table should just wrap. */
+  .table-wrap table.data { min-width: max-content; }
+  .panel-pad > table.data { min-width: 0; width: 100%; }
+  .panel-pad > table.data td, .panel-pad > table.data th { overflow-wrap: anywhere; }
   .app { grid-template-columns: 1fr; }
   .sidebar {
     flex-direction: row; overflow-x: auto; -webkit-overflow-scrolling: touch;

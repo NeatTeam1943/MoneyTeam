@@ -85,6 +85,7 @@ export function AuthProvider({ children }) {
   const role = isGuest ? 'parent' : (member?.role || null)
   const isMentor = role === 'mentor'
   const isStudent = role === 'student'
+  const isEditor = role === 'editor'
   const isParent = isGuest
   const value = {
     session,
@@ -99,6 +100,11 @@ export function AuthProvider({ children }) {
     exitGuestMode,
     // permission gates (mentor / student / viewer model)
     canTransact: isMentor,                       // income / expense / transfer / buy / delete tx
+    // Who may START a transaction. A mentor records it; anyone else proposes
+    // it, and save_expense forces 'pending' for them regardless of what the
+    // client sends. Without this the propose path existed in the form and the
+    // database but no student could reach the form to use it.
+    canPropose: isMentor || isStudent || isEditor,
     canBudget: isMentor || isStudent,            // add & edit budgets
     canAddShopping: isMentor || isStudent,       // add & edit shopping items
     canChangeStatus: isMentor,                   // change a shopping item's status

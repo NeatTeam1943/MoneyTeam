@@ -18,7 +18,7 @@ import ApprovalQueue from '../components/ApprovalQueue'
 
 export default function Transactions() {
   const { t } = useI18n()
-  const { canTransact, session, isParent, isMentor } = useAuth()
+  const { canTransact, canPropose, session, isParent, isMentor } = useAuth()
   const uid = session?.user?.id || (isParent ? 'guest' : null)
   const { activeId, active } = useSeason()
   const toast = useToast()
@@ -280,7 +280,11 @@ export default function Transactions() {
         <button className="btn" onClick={doReceiptsZip} disabled={!!zipping}>
           {zipping ? `${t('downloadReceipts')} ${zipping}` : t('downloadReceipts')}
         </button>
-        {canTransact && <button className="btn btn-primary" onClick={() => { setEditing(null); setShowForm(true) }}>+ {t('add')}</button>}
+        {canPropose && (
+          <button className="btn btn-primary" onClick={() => { setEditing(null); setShowForm(true) }}>
+            + {isMentor ? t('add') : t('proposeExpense')}
+          </button>
+        )}
       </div>
 
       <div className="panel table-wrap">
@@ -296,7 +300,7 @@ export default function Transactions() {
               <th>{t('description')}</th>
               {!isParent && <th>{t('payer')}</th>}
               {!isParent && <th>{t('receipt')}</th>}
-              {canTransact && <th>{t('actions')}</th>}
+              {(canTransact || canPropose) && <th>{t('actions')}</th>}
             </tr>
           </thead>
           <tbody>
@@ -327,10 +331,17 @@ export default function Transactions() {
                 <td style={{ color: 'var(--text-dim)' }}>{r.description || r.vendor || '—'}</td>
                 {!isParent && <td style={{ color: 'var(--text-dim)' }}>{r.payer_display || '—'}</td>}
                 {!isParent && <td><Receipt path={r.receipt_url} number={r.receipt_number} onOpen={setPreview} /></td>}
-                {canTransact && (
+                {(canTransact || canPropose) && (
                   <td>
-                    <button className="btn btn-ghost btn-sm" onClick={() => { setEditing(r); setShowForm(true) }}>{t('edit')}</button>
-                    <button className="btn btn-ghost btn-sm btn-danger" onClick={() => del(r.id)}>{t('delete')}</button>
+                    {/* A mentor edits anything; anyone else only their own
+                        proposal, and only while it is still pending — which is
+                        also what the database allows. */}
+                    {(canTransact || (r.approval === 'pending' && r.proposed_by === session?.user?.id)) && (
+                      <button className="btn btn-ghost btn-sm" onClick={() => { setEditing(r); setShowForm(true) }}>{t('edit')}</button>
+                    )}
+                    {canTransact && (
+                      <button className="btn btn-ghost btn-sm btn-danger" onClick={() => del(r.id)}>{t('delete')}</button>
+                    )}
                   </td>
                 )}
               </tr>

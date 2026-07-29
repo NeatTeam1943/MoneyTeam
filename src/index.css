@@ -132,11 +132,12 @@ label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 
 .spacer { flex: 1; }
 .content { padding: 24px 26px 60px; }
 
+.badge, .pill { white-space: nowrap; }
 .badge {
   font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 20px;
   background: var(--panel-2); color: var(--text-dim); border: 1px solid var(--line-strong);
 }
-.pill { font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 6px; }
+.pill { font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 6px; white-space: nowrap; }
 .pill-in { background: rgba(21,51,224,.12); color: var(--in); }
 .pill-out { background: rgba(255,145,0,.18); color: var(--out); }
 .pill-transfer { background: rgba(91,100,114,.14); color: #495063; }
@@ -294,7 +295,12 @@ html, body { max-width: 100%; overflow-x: hidden; }
 /* Wide enough to fit: share the width, wrap the prose, keep figures intact. */
 @media (min-width: 901px) {
   table.data { width: 100%; table-layout: auto; }
-  table.data td, table.data th { overflow-wrap: anywhere; }
+  /* break-word, not anywhere. `anywhere` also lets the browser count a word's
+     interior as a valid break when it works out the column's minimum width, so
+     a narrow column happily shrank below the width of "הוצאה" and split it as
+     "הוצא / ה". break-word only breaks a word that genuinely cannot fit on a
+     line of its own, and never affects the intrinsic width. */
+  table.data td, table.data th { overflow-wrap: break-word; }
   table.data td.num, table.data td.mono, table.data .mono { overflow-wrap: normal; white-space: nowrap; }
 }
 

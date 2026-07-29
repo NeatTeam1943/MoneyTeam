@@ -338,11 +338,11 @@ export default function Reports() {
           )}
 
           <div className="grid-2" style={{ marginTop: 16 }}>
-            <Breakdown title={t('byCategory')} rows={byCategory} />
-            <Breakdown title={t('bySource')} rows={bySource} />
+            <Breakdown title={t('byCategory')} note={t('noteByCategoryTable')} rows={byCategory} />
+            <Breakdown title={t('bySource')} note={t('noteBySourceTable')} rows={bySource} />
           </div>
           <div className="grid-2" style={{ marginTop: 14 }}>
-            <Breakdown title={t('byAccount')} rows={byAccount} signed />
+            <Breakdown title={t('byAccount')} note={t('noteByAccount')} rows={byAccount} signed />
             <div className="panel panel-pad">
               <div className="section-title" style={{ marginTop: 0 }}>{t('topExpenses')}</div>
               <table className="data">
@@ -377,12 +377,22 @@ function Chart({ title, note, height, children }) {
   )
 }
 
-function Breakdown({ title, rows, signed }) {
+function Breakdown({ title, note, rows, signed }) {
   const { t } = useI18n()
-  const total = rows.reduce((s, r) => s + r.value, 0)
+  // The denominator is the sum of ABSOLUTE values, not the signed sum.
+  //
+  // For a table of expenses those are the same thing. For "by account" they
+  // are not: the values are net movement, so income and expense cancel and the
+  // signed total collapses towards zero. Dividing absolute values by it gave
+  // 77% + 51% + 75% = 203%. Each row's share of total movement is a number
+  // that means something and adds to 100.
+  const total = rows.reduce((s, r) => s + Math.abs(r.value), 0)
   return (
     <div className="panel panel-pad">
-      <div className="section-title" style={{ marginTop: 0 }}>{title}</div>
+      <div className="section-title" style={{ marginTop: 0, marginBottom: 2 }}>{title}</div>
+      <p style={{ color: 'var(--text-faint)', fontSize: 12, margin: '0 0 8px' }}>
+        {note} {t('shareNote')}
+      </p>
       {!rows.length ? <div className="empty">{t('noRows')}</div> : (
         <table className="data">
           <tbody>
@@ -391,7 +401,7 @@ function Breakdown({ title, rows, signed }) {
                 <td>{r.name}</td>
                 <td className="num mono" style={{ color: signed ? amountColor(r.value) : undefined }}>{money(r.value)}</td>
                 <td className="num mono" style={{ color: 'var(--text-faint)', width: 60 }}>
-                  {total ? Math.round((Math.abs(r.value) / Math.abs(total)) * 100) + '%' : '—'}
+                  {total ? Math.round((Math.abs(r.value) / total) * 100) + '%' : '—'}
                 </td>
               </tr>
             ))}

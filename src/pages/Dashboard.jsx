@@ -39,14 +39,14 @@ export default function Dashboard() {
     // have no grant on. Firing them anyway would just log RLS errors and draw
     // empty charts, which reads as "the team spent nothing" rather than
     // "you can't see this".
-    supabase.from(isParent ? 'transactions_guest' : 'transactions').select('*').eq('season_id', activeId)
+    supabase.from(isParent ? 'transactions_guest' : 'ledger_transactions').select('*').eq('season_id', activeId)
       .then(({ data, error }) => { if (!error) setAllRows(data || []) })
     supabase.from(isParent ? 'account_balances_guest' : 'account_balances').select('*')
       .then(({ data, error }) => { if (!error) setBalances(data || []) })
     if (isParent) return
     supabase.from('budgets').select('*').eq('season_id', activeId)
       .then(({ data, error }) => { if (!error) setBudgets(data || []) })
-    supabase.from('transaction_lines').select('transaction_id,amount,budget_id,team_scope,transactions!inner(season_id,team_scope)').eq('transactions.season_id', activeId)
+    supabase.from('ledger_lines_full').select('transaction_id,amount,budget_id,team_scope,category_id,season_id,tx_team_scope').eq('season_id', activeId)
       .then(({ data, error }) => { if (!error) setAllLines(data || []) })
     // shopping items still waiting to be bought: not yet linked to a purchase
     // and not cancelled/received.
@@ -104,7 +104,8 @@ export default function Dashboard() {
     () => topAncestorNameFactory(categories, categoryName), [categories, categoryName])
 
   const byCategory = useMemo(() => groupSum(lines, (l) => {
-    const catId = budgetCat[l.budget_id]
+    // Line category first — see Reports.
+    const catId = l.category_id || budgetCat[l.budget_id]
     return (categoryGrouping === GROUPING.PARENT ? topAncestorName(catId) : categoryName[catId]) || t('overall')
   }), [lines, categoryName, budgetCat, t, categoryGrouping, topAncestorName])
   const bySource = useMemo(() => groupSum(rows.filter((r) => r.type === 'income'), (r) => sourceName[r.income_source_id] || '—'), [rows, sourceName])

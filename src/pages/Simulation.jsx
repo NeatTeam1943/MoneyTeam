@@ -52,7 +52,7 @@ export default function Simulation() {
       const [it, bg, tl, bal] = await withTimeout(Promise.all([
         supabase.from('shopping_items').select('*').eq('season_id', activeId),
         supabase.from('budgets').select('*').eq('season_id', activeId),
-        supabase.from('transaction_lines').select('amount,budget_id,transactions!inner(season_id,team_scope)').eq('transactions.season_id', activeId),
+        supabase.from('ledger_lines_full').select('amount,budget_id,team_scope,category_id,season_id,tx_team_scope').eq('season_id', activeId),
         supabase.from('account_balances').select('*'),
       ]))
       if (!it.error) setItems(it.data || [])

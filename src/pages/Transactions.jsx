@@ -14,10 +14,11 @@ import { TeamScopeBadge } from '../components/TeamScope'
 import { attributableAmount } from '../lib/teamScope'
 import { TX } from '../domain/constants'
 import ReceiptPreview from '../components/ReceiptPreview'
+import ApprovalQueue from '../components/ApprovalQueue'
 
 export default function Transactions() {
   const { t } = useI18n()
-  const { canTransact, session, isParent } = useAuth()
+  const { canTransact, session, isParent, isMentor } = useAuth()
   const uid = session?.user?.id || (isParent ? 'guest' : null)
   const { activeId, active } = useSeason()
   const toast = useToast()
@@ -32,6 +33,7 @@ export default function Transactions() {
   const [editing, setEditing] = useState(null)
   const [showForm, setShowForm] = useState(false)
   const [preview, setPreview] = useState(null)   // { path, number }
+  const [decidingId, setDecidingId] = useState(null)
 
   const [q, setQ] = useState('')
   const [fType, setFType] = useState('')
@@ -54,7 +56,7 @@ export default function Transactions() {
         supabase.from(isParent ? 'transactions_guest' : 'transactions_view').select('*').eq('season_id', activeId),
         supabase.from('account_balances').select('*'),
         supabase.from('budgets').select('*').eq('season_id', activeId),
-        supabase.from('transaction_lines').select('transaction_id,budget_id,amount,team_scope,description,transactions!inner(season_id)').eq('transactions.season_id', activeId),
+        supabase.from('transaction_lines').select('transaction_id,budget_id,amount,team_scope,category_id,description,transactions!inner(season_id)').eq('transactions.season_id', activeId),
       ]))
       if (!tx.error) setRows(tx.data || [])      // keep prior data if a query fails
       if (!bal.error) setBalances(bal.data || [])
@@ -95,6 +97,7 @@ export default function Transactions() {
 
   const budgetOptions = useMemo(() => budgets.map((b) => ({
     id: b.id,
+    category_id: b.category_id,
     team_scope: b.team_scope || 'both',
     // The program is part of the budget's identity now — two categories with
     // the same name can be different pots, so the label has to say which.
@@ -104,7 +107,7 @@ export default function Transactions() {
   const budgetLabel = useMemo(() => Object.fromEntries(budgetOptions.map((b) => [b.id, b.label])), [budgetOptions])
   const budgetCat = useMemo(() => Object.fromEntries(budgets.map((b) => [b.id, b.category_id])), [budgets])
 
-  const enriched = useMemo(() => rows.map((r) => ({
+  const enriched = useMemo(() => approvedRows.map((r) => ({
     ...r,
     accountName: lk.accountName[r.account_id] || '',
     toAccountName: lk.accountName[r.to_account_id] || '',
@@ -116,7 +119,7 @@ export default function Transactions() {
       if (ls.length === 1) return budgetLabel[ls[0].budget_id] || t('overall')
       return `${t('split')} (${ls.length})`
     })(),
-  })), [rows, lk.accountName, lk.categoryName, lk.sourceName, budgetLabel, txLines, t])
+  })), [approvedRows, lk.accountName, lk.categoryName, lk.sourceName, budgetLabel, txLines, t])
 
   // Which category id(s) a transaction actually touches — an expense's
   // category lives on its lines' budgets (a split purchase can touch
@@ -333,6 +336,8 @@ export default function Transactions() {
         </table>
         {loading ? <div className="empty">{t('loading')}</div> : (!filtered.length && <div className="empty">{t('noRows')}</div>)}
       </div>
+
+      {isMentor && <ApprovalQueue rows={pendingRows} onDecide={decide} busyId={decidingId} />}
 
       {preview && <ReceiptPreview path={preview.path} number={preview.number} onClose={() => setPreview(null)} />}
 

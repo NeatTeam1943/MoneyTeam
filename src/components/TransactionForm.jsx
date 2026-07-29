@@ -1,15 +1,20 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { useI18n } from '../lib/i18n'
+import { useAuth } from '../context/AuthContext'
 import { money } from '../lib/format'
 import Modal from './Modal'
 import CurrencyAmountInput from './CurrencyAmountInput'
 import { TeamScopePicker } from './TeamScope'
+import { resolveBudget } from '../domain/budgetResolver'
+import { useLookups } from '../lib/useLookups'
 
 const OTHER_TYPES = ['income', 'transfer', 'in_kind'] // expense handled separately (with lines)
 
 export default function TransactionForm({ editing, initial, seasonId, accounts, categories, sources, budgets = [], vendors = [], onClose, onSaved }) {
   const { t } = useI18n()
+  const { isMentor } = useAuth()
+  const lk = useLookups()
   const seed = editing || initial || {}
   const knownVendor = seed.vendor && vendors.some((v) => v.name === seed.vendor)
   const [vendorMode, setVendorMode] = useState(() => (seed.vendor && !knownVendor ? 'other' : 'list'))
@@ -67,21 +72,25 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
     setF((prev) => (prev.description === autoDescription ? prev : { ...prev, description: autoDescription }))
   }, [autoDescription, descMode, isExpense])
 
-  // Mirrors guard_line_budget_scope() in the database: only two genuinely
-  // opposed programs are refused; anything involving 'shared' is fine.
-  const budgetAllowed = (b, lineScope) => {
-    const bs = b.team_scope || 'both'
-    const ls = lineScope || 'both'
-    return bs === 'both' || ls === 'both' || bs === ls
-  }
+  // You choose WHAT it was for; which pot pays follows from that. The budget
+  // is found by walking up the category tree to the nearest pot that covers
+  // it, preferring one of the same program. Deriving it rather than offering
+  // it as a second dropdown keeps the category report and the budget report
+  // describing the same thing — an override would let them drift apart.
+  const budgetFor = (categoryId, scope) =>
+    resolveBudget(categoryId, scope, budgets, lk.parentOf)
 
-  // Changing a line's program can strand a budget it may no longer use.
+  const setLineCategory = (i, categoryId) => setLines(lines.map((l, idx) => {
+    if (idx !== i) return l
+    const r = budgetFor(categoryId, l.team_scope)
+    return { ...l, category_id: categoryId, budget_id: r.budget?.id || '' }
+  }))
+
+  // Changing a line's program can change which pot covers it.
   const setLineScope = (i, scope) => setLines(lines.map((l, idx) => {
     if (idx !== i) return l
-    const next = { ...l, team_scope: scope }
-    const b = budgets.find((x) => x.id === l.budget_id)
-    if (b && !budgetAllowed(b, scope)) next.budget_id = ''
-    return next
+    const r = budgetFor(l.category_id, scope)
+    return { ...l, team_scope: scope, budget_id: r.budget?.id || '' }
   }))
 
   const total = lines.reduce((s, l) => s + (Number(l.amount) || 0), 0)
@@ -115,6 +124,7 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
         fx_amount: l.fx?.amount ? Number(l.fx.amount) : null,
         fx_rate: l.fx?.rate ? Number(l.fx.rate) : null,
         team_scope: l.team_scope || 'both',
+        category_id: l.category_id || null,
       }))
       const { data, error } = await supabase.rpc('save_expense', {
         p_tx_id: editing?.id || null,
@@ -129,6 +139,9 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
         // null lets the database derive it from the lines: uniform lines set the
         // header, a mixed basket becomes 'shared'.
         p_team_scope: null,
+        // The database decides regardless of what is sent — this only makes
+        // the intent explicit and lets the button say the right thing.
+        p_propose: !isMentor,
       })
       if (error) throw error
       onSaved({ id: data })
@@ -178,9 +191,18 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
       onClose={onClose}
       footer={<>
         <button className="btn btn-ghost" onClick={onClose}>{t('cancel')}</button>
-        <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? '…' : t('save')}</button>
+        <button className="btn btn-primary" onClick={save} disabled={busy}>
+          {busy ? '…' : (isMentor ? t('save') : t('proposeExpense'))}
+        </button>
       </>}
     >
+      {!isMentor && (
+        <div className="panel panel-pad" style={{
+          borderColor: 'var(--orange)', background: 'rgba(255,145,0,.06)',
+          marginBottom: 12, fontSize: 13,
+        }}>{t('pendingHint')}</div>
+      )}
+
       <div className="field">
         <label>{t('type')}</label>
         <div className="tabs" style={{ marginBottom: 0 }}>
@@ -271,14 +293,11 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
             <label>{t('lines')}</label>
             {lines.map((l, i) => (
               <div key={i} className="line-row">
-                {/* The database refuses a cross-program charge outright
-                    (migration 20), so offering one here would only produce a
-                    save error later. Shared budgets always qualify. */}
-                <select value={l.budget_id} onChange={(e) => setLine(i, 'budget_id', e.target.value)}>
-                  <option value="">{t('none')}</option>
-                  {budgets
-                    .filter((b) => budgetAllowed(b, l.team_scope))
-                    .map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}
+                <select value={l.category_id} onChange={(e) => setLineCategory(i, e.target.value)}>
+                  <option value="">{t('uncategorized')}</option>
+                  {lk.categoryTree.map((c) => (
+                    <option key={c.id} value={c.id}>{c.path || c.name}</option>
+                  ))}
                 </select>
                 <div>
                   <CurrencyAmountInput compact value={l.amount} onChange={(v) => setLine(i, 'amount', v)}
@@ -292,6 +311,19 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
                 </select>
                 <input className="line-desc" placeholder={t('description')} value={l.description}
                   onChange={(e) => setLine(i, 'description', e.target.value)} />
+                {/* Say which pot this lands in. Deriving it silently would be
+                    the same trap as deriving it wrongly. */}
+                <span className="line-paidfrom" style={{
+                  gridColumn: '1 / -1', fontSize: 12, color: 'var(--text-faint)',
+                  marginTop: -2,
+                }}>
+                  {(() => {
+                    const r = budgetFor(l.category_id, l.team_scope)
+                    if (!r.budget) return t('noBudgetCovers')
+                    const via = budgets.find((b) => b.id === r.budget.id)
+                    return `${t('paidFrom')}: ${via?.label || '—'}${r.exact ? '' : ' ↑'}`
+                  })()}
+                </span>
                 <button className="btn btn-ghost btn-sm btn-danger" onClick={() => removeLine(i)}>✕</button>
               </div>
             ))}
@@ -326,7 +358,7 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
   )
 }
 
-const emptyLine = () => ({ budget_id: '', amount: '', description: '', shopping_item_id: '', fx: null, team_scope: 'both' })
+const emptyLine = () => ({ budget_id: '', category_id: '', amount: '', description: '', shopping_item_id: '', fx: null, team_scope: 'both' })
 const normLine = (l) => ({
   budget_id: l.budget_id || '',
   amount: l.amount ?? '',
@@ -334,4 +366,5 @@ const normLine = (l) => ({
   shopping_item_id: l.shopping_item_id || '',
   fx: l.fx_currency ? { currency: l.fx_currency, amount: l.fx_amount, rate: l.fx_rate } : null,
   team_scope: l.team_scope || 'both',
+  category_id: l.category_id || '',
 })

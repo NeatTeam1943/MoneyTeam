@@ -75,8 +75,8 @@ export default function Reports() {
     if (rows.length === 0) setLoading(true)
     try {
       const [tx, tl, bg] = await withTimeout(Promise.all([
-        supabase.from('transactions').select('*').eq('season_id', activeId),
-        supabase.from('transaction_lines').select('transaction_id,amount,budget_id,description,team_scope,transactions!inner(season_id,date,team_scope)').eq('transactions.season_id', activeId),
+        supabase.from('ledger_transactions').select('*').eq('season_id', activeId),
+        supabase.from('ledger_lines_full').select('transaction_id,amount,budget_id,description,team_scope,category_id,season_id,date,tx_team_scope').eq('season_id', activeId),
         supabase.from('budgets').select('*').eq('season_id', activeId),
       ]))
       if (!tx.error) setRows(tx.data || [])
@@ -101,7 +101,7 @@ export default function Reports() {
     [rows, byTx, ts, from, to])   // eslint-disable-line react-hooks/exhaustive-deps
 
   const scopedLines = useMemo(
-    () => lines.filter((l) => ts.matches(l.team_scope) && inPeriod(l.transactions?.date)),
+    () => lines.filter((l) => ts.matches(l.team_scope) && inPeriod(l.date)),
     [lines, ts, from, to])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const totals = useMemo(() => totalsOf(scoped, ts.all), [scoped, ts])
@@ -111,7 +111,11 @@ export default function Reports() {
   const budgetCat = useMemo(() => Object.fromEntries(budgets.map((b) => [b.id, b.category_id])), [budgets])
 
   const byCategory = useMemo(
-    () => byCategoryOf(scopedLines, (l) => lk.categoryName[budgetCat[l.budget_id]] || t('uncategorized')),
+    // The line's own category wins; the paying budget's category is the fallback
+    // for rows created before migration 21. Reporting granularity is no longer
+    // limited by how finely you chose to budget.
+    () => byCategoryOf(scopedLines, (l) =>
+      lk.categoryName[l.category_id || budgetCat[l.budget_id]] || t('uncategorized')),
     [scopedLines, budgetCat, lk.categoryName, t])
 
   const bySource = useMemo(

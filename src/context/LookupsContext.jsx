@@ -98,6 +98,7 @@ export function LookupsProvider({ children }) {
       vendorsActive: vendors.filter(isActive),
       templatesActive: templates.filter(isActive),
       categoryTree: buildTree(categories),
+      parentOf: Object.fromEntries(categories.map((c) => [c.id, c.parent_id])),
       descendantsOf: (id) => descendants[id] || new Set([id]),
       accountName: nameMap(accounts),
       categoryName: nameMap(categories),

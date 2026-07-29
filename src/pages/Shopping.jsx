@@ -51,7 +51,7 @@ export default function Shopping() {
       const [items, bg, tl] = await withTimeout(Promise.all([
         supabase.from('shopping_items').select('*').eq('season_id', activeId),
         supabase.from('budgets').select('*').eq('season_id', activeId),
-        supabase.from('transaction_lines').select('amount,budget_id,transactions!inner(season_id,team_scope)').eq('transactions.season_id', activeId),
+        supabase.from('ledger_lines_full').select('amount,budget_id,team_scope,category_id,season_id,tx_team_scope').eq('season_id', activeId),
       ]))
       if (!items.error) setRows(items.data || [])
       if (!bg.error) setBudgets(bg.data || [])
@@ -91,7 +91,7 @@ export default function Shopping() {
   })), [rows, lk.categoryName, lk.levelName, ts])
 
   // Expense lines carry their scope on the parent transaction.
-  const scopedLines = useMemo(() => lines.filter((l) => ts.matches(l.transactions?.team_scope)), [lines, ts])
+  const scopedLines = useMemo(() => lines.filter((l) => ts.matches(l.tx_team_scope)), [lines, ts])
 
   const [sort, setSort] = useState({ col: 'priority', dir: 'asc' })
   function toggleSort(col) {
@@ -213,6 +213,7 @@ export default function Shopping() {
 
   const budgetOptions = useMemo(() => budgets.map((b) => ({
     id: b.id,
+    category_id: b.category_id,
     team_scope: b.team_scope || 'both',
     // The program is part of the budget's identity now — two categories with
     // the same name can be different pots, so the label has to say which.

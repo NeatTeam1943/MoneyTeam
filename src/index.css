@@ -237,6 +237,7 @@ table.data tr:hover td { background: var(--panel-2); }
     minmax(8rem, 1.1fr) minmax(9rem, 1fr) minmax(5.5rem, auto) minmax(9rem, 1.5fr) auto;
 }
 .line-scope { min-width: 5.5rem; }
+.line-row > .line-paidfrom { grid-column: 1 / -1; }
 
 /* the modal itself should track the viewport, not a fixed 760px */
 .modal.modal-wide { max-width: min(60rem, 96vw); }

@@ -7,7 +7,7 @@ import { useI18n } from '../lib/i18n'
 import { useToast } from '../lib/toast'
 import { useLookups } from '../lib/useLookups'
 import { money } from '../lib/format'
-import { buildBudgetRows } from '../domain/budgets'
+import { buildBudgetRows, groupSiblings } from '../domain/budgets'
 import { GROUPING, SCOPE } from '../domain/constants'
 import Modal from '../components/Modal'
 import { catLabel } from '../context/LookupsContext'
@@ -38,7 +38,7 @@ export default function Budgets() {
     try {
       const [b, tl, sh] = await withTimeout(Promise.all([
         supabase.from('budgets').select('*').eq('season_id', activeId),
-        supabase.from('transaction_lines').select('amount,budget_id,transactions!inner(season_id,team_scope)').eq('transactions.season_id', activeId),
+        supabase.from('ledger_lines_full').select('amount,budget_id,team_scope,category_id,season_id,tx_team_scope').eq('season_id', activeId),
         supabase.from('shopping_items').select('est_price,quantity,category_id,status,team_scope').eq('season_id', activeId),
       ]))
       if (!b.error) setBudgets(b.data || [])
@@ -108,10 +108,13 @@ export default function Budgets() {
     labelFor: (b) => (!b.category_id ? t('overall') : (lk.categoryName[b.category_id] || t('uncategorized'))),
     matchesTeam,
     allTicked: ts.all,
+    // Enables ownership-based attribution: a line counts against the budget it
+    // was charged to, not against every budget sharing its category.
+    parentOf: lk.parentOf,
   })
 
   // Cards: always 'parent' (the roll-up), independent of the chart toggle.
-  const rows = useMemo(() => buildRows(GROUPING.PARENT),
+  const rows = useMemo(() => groupSiblings(buildRows(GROUPING.PARENT)),
     [scopedBudgets, scopedExpenses, scopedShopping, budgetCat, lk, t])          // eslint-disable-line react-hooks/exhaustive-deps
   // Chart: follows the toggle.
   const chartRows = useMemo(() => buildRows(categoryGrouping),
@@ -168,7 +171,7 @@ export default function Budgets() {
             <div key={r.id} className="panel panel-pad" style={r.childOver ? { borderColor: 'var(--danger)' } : undefined}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
                 <h3 style={{ fontSize: 16, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  {r.label}<TeamScopeBadge scope={r.team_scope} />
+                  {r.label}{!r.isGroup && <TeamScopeBadge scope={r.team_scope} />}
                 </h3>
                 <span className="mono" style={{ color: 'var(--text-dim)', fontSize: 13 }}>{Math.round(r.pct)}%</span>
               </div>
@@ -183,7 +186,28 @@ export default function Budgets() {
                   says how much of it came from the programs you are looking
                   at, so the split is visible without the balance ever being
                   understated. */}
-              {r.team_scope === SCOPE.BOTH && r.spentInScope !== r.spent && (
+              {/* A split pot: the whole above, each program underneath. */}
+              {r.parts && (
+                <div style={{ marginTop: 8, borderTop: '1px solid var(--line)', paddingTop: 6 }}>
+                  {r.parts.map((p) => (
+                    <div key={p.id} style={{
+                      display: 'flex', justifyContent: 'space-between', gap: 8,
+                      fontSize: 12, padding: '3px 0', flexWrap: 'wrap',
+                    }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                        <span style={{ color: 'var(--text-faint)' }}>└</span>
+                        <TeamScopeBadge scope={p.team_scope} />
+                      </span>
+                      <span className="mono" style={{ color: 'var(--text-dim)' }}>
+                        {money(p.spent)} / {money(p.amount)}
+                        {p.amount > 0 && p.spent > p.amount &&
+                          <b style={{ color: 'var(--danger)' }}> · {t('over')}</b>}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {!r.isGroup && r.team_scope === SCOPE.BOTH && r.spentInScope !== r.spent && (
                 <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-faint)' }}>
                   {t('sharedPotNote').replace('{v}', money(r.spentInScope))}
                 </div>

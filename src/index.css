@@ -173,8 +173,8 @@ table.data tr:hover td { background: var(--panel-2); }
 
 /* ---------- Toolbar / filters ---------- */
 .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 16px; }
-.toolbar input, .toolbar select { width: auto; min-width: 120px; }
-.toolbar .grow { flex: 1; min-width: 180px; }
+.toolbar input, .toolbar select { width: auto; min-width: 6.5rem; }
+.toolbar .grow { flex: 1; min-width: 9rem; }
 
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -273,9 +273,14 @@ html, body { max-width: 100%; overflow-x: hidden; }
 
 /* Tables are the one thing that legitimately scrolls sideways — a ledger has
    more columns than a phone has width, and shrinking them to fit makes the
-   numbers unreadable. The wrapper scrolls; the page does not. */
+   numbers unreadable. The wrapper scrolls; the page does not.
+
+   min-width: max-content belongs to NARROW screens only. Left global it also
+   told a 1366px laptop that every column must be as wide as its longest cell
+   and may never compress, so a long Hebrew description dragged the whole table
+   wider than the panel. On a screen with room, the table should use the room
+   and let text wrap. */
 .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-table.data { min-width: max-content; }
 
 @media (max-width: 1200px) {
   .app { grid-template-columns: 13rem 1fr; }
@@ -286,7 +291,16 @@ table.data { min-width: max-content; }
   .line-row > .line-desc { grid-column: 1 / -1; }
 }
 
+/* Wide enough to fit: share the width, wrap the prose, keep figures intact. */
+@media (min-width: 901px) {
+  table.data { width: 100%; table-layout: auto; }
+  table.data td, table.data th { overflow-wrap: anywhere; }
+  table.data td.num, table.data td.mono, table.data .mono { overflow-wrap: normal; white-space: nowrap; }
+}
+
+/* Narrow: let it be as wide as it needs and scroll inside its wrapper. */
 @media (max-width: 900px) {
+  table.data { min-width: max-content; }
   .app { grid-template-columns: 1fr; }
   .sidebar {
     flex-direction: row; overflow-x: auto; -webkit-overflow-scrolling: touch;

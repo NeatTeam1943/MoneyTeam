@@ -1,13 +1,18 @@
 const ils = new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 2 })
 
-export const money = (n) => ils.format(Number(n || 0))
+// `+ 0` collapses negative zero. Without it, a value that rounds to -0 prints
+// as "-0.00" — a deficit that does not exist. Belt and braces alongside
+// roundMoney; this is the last point before a number reaches a person.
+export const money = (n) => ils.format((Number(n) || 0) + 0)
 export const num = (n) => new Intl.NumberFormat('he-IL', { maximumFractionDigits: 2 }).format(Number(n || 0))
 
 // A negative figure should read as negative at a glance — an account in
 // overdraft or a budget blown past its limit is the thing you most need to
 // see, and a minus sign alone is easy to miss in a wall of numbers.
-export const amountColor = (n) => (Number(n) < 0 ? 'var(--danger)' : 'var(--text)')
-export const signedColor = (n) => (Number(n) < 0 ? 'var(--danger)' : 'var(--ok)')
+// Compares on the rounded value, so a figure that is only negative below the
+// agora is not painted as an overdraft.
+export const amountColor = (n) => (((Number(n) || 0) + 0) < 0 ? 'var(--danger)' : 'var(--text)')
+export const signedColor = (n) => (((Number(n) || 0) + 0) < 0 ? 'var(--danger)' : 'var(--ok)')
 
 // `quantity || 1` looked harmless until the 2027 import brought in rows with a
 // deliberate quantity of 0 ("on the list, not decided yet") — 0 is falsy, so

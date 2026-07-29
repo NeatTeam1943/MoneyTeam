@@ -3,8 +3,12 @@ import { MONEY_DP } from './constants'
 const FACTOR = 10 ** MONEY_DP
 
 /** Rounds to the stored precision. Kept in one place so every call site
- *  rounds identically — mixed rounding is how totals drift by agorot. */
-export const roundMoney = (n) => Math.round((Number(n) || 0) * FACTOR) / FACTOR
+ *  rounds identically — mixed rounding is how totals drift by agorot.
+ *
+ *  The `|| 0` is not decoration. Rounding a tiny negative gives NEGATIVE ZERO,
+ *  which Intl still prints as "-0.00" and which reads as a deficit. -0 is
+ *  falsy, so this collapses it to plain 0. Same for NaN. */
+export const roundMoney = (n) => (Math.round((Number(n) || 0) * FACTOR) / FACTOR) || 0
 
 export const toNumber = (v) => Number(v) || 0
 

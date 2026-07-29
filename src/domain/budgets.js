@@ -1,6 +1,7 @@
 import { SCOPE, SHOPPING_STATUS, GROUPING } from './constants'
-import { toNumber, lineTotalOf } from './money'
+import { toNumber, lineTotalOf, roundMoney } from './money'
 import { buildOwnership, ownedBudgetIds, directBudgetIds } from './budgetOwnership'
+import { resolveBudget } from './budgetResolver'
 
 // Budget roll-up, extracted from Budgets.jsx unchanged.
 //
@@ -88,12 +89,12 @@ export function groupSiblings(rows) {
       id: `group:${key}`,
       team_scope: 'both',
       isGroup: true,
-      amount,
-      spent,
-      spentInScope: sum((x) => x.spentInScope),
-      requested: sum((x) => x.requested),
-      remaining: amount - spent,
-      pct: amount > 0 ? Math.min(999, (spent / amount) * 100) : 0,
+      amount: roundMoney(amount),
+      spent: roundMoney(spent),
+      spentInScope: roundMoney(sum((x) => x.spentInScope)),
+      requested: roundMoney(sum((x) => x.requested)),
+      remaining: roundMoney(amount - spent),
+      pct: amount > 0 ? Math.min(999, roundMoney((spent / amount) * 100)) : 0,
       parts: family.map((x) => ({ ...x, parts: null })),
     })
   }
@@ -111,14 +112,38 @@ export function buildBudgetRows(grouping, deps) {
   // category, because a wish-list item names a category and has no budget yet.
   const ownership = parentOf ? buildOwnership(budgets, parentOf) : null
 
+  // A line whose budget was deleted keeps its amount and its category — the
+  // foreign key is ON DELETE SET NULL, so nothing is lost — but it stops
+  // belonging to any budget, and every budget total silently drops by that
+  // much. Deleting the motors budget made ₪17,819.20 disappear from the
+  // Budgets page while sitting untouched in the ledger.
+  //
+  // Since migration 21 the line still says what it was FOR, so the pot that
+  // covers that category can be found the same way the form finds it. An
+  // orphaned line falls back to its parent budget instead of nowhere.
+  const effectiveBudgetId = (l) => {
+    if (l.budget_id) return l.budget_id
+    if (!parentOf || !l.category_id) return null
+    return resolveBudget(l.category_id, l.team_scope, budgets, parentOf).budget?.id ?? null
+  }
+
   return budgets.map((b) => {
     const descendants = b.category_id ? descendantsOf(b.category_id) : null
     const inScope = categoryPredicate(b, grouping, descendants)
     const owned = ownership
       ? (grouping === GROUPING.DIRECT ? directBudgetIds(b.id) : ownedBudgetIds(b.id, ownership))
       : null
+    // Spend that resolves to no budget at all — no budget_id and no category
+    // to find one from — still exists. The overall pot absorbs it in the
+    // rolled-up view so that the money appears somewhere rather than being
+    // quietly dropped from every total on the page.
+    const absorbsUnattributed = !b.category_id && grouping !== GROUPING.DIRECT
     const spent = owned
-      ? expenses.reduce((s, l) => s + (owned.has(l.budget_id) ? toNumber(l.amount) : 0), 0)
+      ? expenses.reduce((s, l) => {
+        const eff = effectiveBudgetId(l)
+        const counts = owned.has(eff) || (absorbsUnattributed && eff == null)
+        return s + (counts ? toNumber(l.amount) : 0)
+      }, 0)
       : spentOn(expenses, inScope, budgetCategory)
     // The ticked programs' share of a shared pot — a secondary figure, never
     // the balance.
@@ -126,17 +151,23 @@ export function buildBudgetRows(grouping, deps) {
       ? (b.team_scope !== SCOPE.BOTH || allTicked
         ? spent
         : expenses.reduce((s, l) =>
-          s + (owned.has(l.budget_id) && matchesTeam(l.team_scope) ? toNumber(l.amount) : 0), 0))
+          s + (((owned.has(effectiveBudgetId(l)) || (absorbsUnattributed && effectiveBudgetId(l) == null))
+            && matchesTeam(l.team_scope)) ? toNumber(l.amount) : 0), 0))
       : spentInScopeOn(b, expenses, inScope, budgetCategory, matchesTeam, allTicked)
     const amount = toNumber(b.amount)
     return {
       ...b,
       label: labelFor(b),
-      spent,
-      spentInScope,
-      requested: requestedOn(shopping, inScope),
-      remaining: amount - spent,
-      pct: amount > 0 ? Math.min(PCT_CEILING, (spent / amount) * 100) : 0,
+      // Every figure is rounded to the agora before it leaves. spent is a sum
+      // of many floats, so amount - spent lands at -1.45e-11 rather than 0 for
+      // a budget that is exactly used up — small enough to be invisible, large
+      // enough to render as "-0.00" in red beside an identical budget showing
+      // "0.00" in green.
+      spent: roundMoney(spent),
+      spentInScope: roundMoney(spentInScope),
+      requested: roundMoney(requestedOn(shopping, inScope)),
+      remaining: roundMoney(amount - spent),
+      pct: amount > 0 ? Math.min(PCT_CEILING, roundMoney((spent / amount) * 100)) : 0,
       childOver: childrenOverspend(b, budgets, descendants),
     }
   }).sort(byOverallThenAmount)

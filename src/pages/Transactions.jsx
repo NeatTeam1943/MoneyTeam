@@ -107,6 +107,25 @@ export default function Transactions() {
   const budgetLabel = useMemo(() => Object.fromEntries(budgetOptions.map((b) => [b.id, b.label])), [budgetOptions])
   const budgetCat = useMemo(() => Object.fromEntries(budgets.map((b) => [b.id, b.category_id])), [budgets])
 
+  // Pending rows are held apart from the ledger. They are not money yet, so
+  // they must not sit among rows that are.
+  const pendingRows = useMemo(
+    () => rows.filter((r) => r.approval === 'pending'), [rows])
+  const approvedRows = useMemo(
+    () => rows.filter((r) => (r.approval || 'approved') !== 'pending'), [rows])
+
+  async function decide(row, approve) {
+    if (!approve && !confirm(t('confirmReject'))) return
+    setDecidingId(row.id)
+    const { error } = await supabase.rpc('decide_transaction', {
+      p_tx_id: row.id, p_approve: approve, p_note: null,
+    })
+    setDecidingId(null)
+    if (error) { toast.error(error.message); return }
+    toast.success(t('saved'))
+    load()
+  }
+
   const enriched = useMemo(() => approvedRows.map((r) => ({
     ...r,
     accountName: lk.accountName[r.account_id] || '',

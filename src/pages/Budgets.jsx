@@ -198,10 +198,25 @@ export default function Budgets() {
                         <span style={{ color: 'var(--text-faint)' }}>└</span>
                         <TeamScopeBadge scope={p.team_scope} />
                       </span>
-                      <span className="mono" style={{ color: 'var(--text-dim)' }}>
-                        {money(p.spent)} / {money(p.amount)}
-                        {p.amount > 0 && p.spent > p.amount &&
-                          <b style={{ color: 'var(--danger)' }}> · {t('over')}</b>}
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <span className="mono" style={{ color: 'var(--text-dim)' }}>
+                          {money(p.spent)} / {money(p.amount)}
+                          {p.amount > 0 && p.spent > p.amount &&
+                            <b style={{ color: 'var(--danger)' }}> · {t('over')}</b>}
+                        </span>
+                        {/* Each part is a real budget with its own id. The
+                            group row above is a synthetic total and must not
+                            offer edit or delete — acting on it would target a
+                            budget that does not exist and carry the summed
+                            amount of all three. */}
+                        {canBudget && (
+                          <span style={{ display: 'inline-flex', gap: 2 }}>
+                            <button className="btn btn-ghost btn-sm" style={{ padding: '1px 6px', fontSize: 11 }}
+                              onClick={() => { setEditing(p); setOpen(true) }}>{t('edit')}</button>
+                            <button className="btn btn-ghost btn-sm btn-danger" style={{ padding: '1px 6px', fontSize: 11 }}
+                              onClick={() => del(p.id)}>{t('delete')}</button>
+                          </span>
+                        )}
                       </span>
                     </div>
                   ))}
@@ -214,8 +229,12 @@ export default function Budgets() {
               )}
               {canBudget && (
                 <div style={{ marginTop: 12, display: 'flex', gap: 6 }}>
-                  <button className="btn btn-ghost btn-sm" onClick={() => { setEditing(r); setOpen(true) }}>{t('edit')}</button>
-                  <button className="btn btn-ghost btn-sm btn-danger" onClick={() => del(r.id)}>{t('delete')}</button>
+                  {r.isGroup ? (
+                    <span style={{ color: 'var(--text-faint)', fontSize: 12 }}>{t('editEachPart')}</span>
+                  ) : (<>
+                    <button className="btn btn-ghost btn-sm" onClick={() => { setEditing(r); setOpen(true) }}>{t('edit')}</button>
+                    <button className="btn btn-ghost btn-sm btn-danger" onClick={() => del(r.id)}>{t('delete')}</button>
+                  </>)}
                 </div>
               )}
             </div>

@@ -164,7 +164,15 @@ export default function Transactions() {
     for (const r of rows) {
       const ids = new Set()
       if (r.category_id) ids.add(r.category_id)
-      for (const l of (txLines[r.id] || [])) if (budgetCat[l.budget_id]) ids.add(budgetCat[l.budget_id])
+      for (const l of (txLines[r.id] || [])) {
+        // The LINE's own category first. Reading only the budget's category
+        // meant a line marked "מנועים" but paid from the "רובוט" pot was
+        // filed under רובוט alone, so filtering by מנועים found nothing.
+        // The budget's category stays as the fallback for rows created
+        // before migration 21 gave lines a category of their own.
+        const cid = l.category_id || budgetCat[l.budget_id]
+        if (cid) ids.add(cid)
+      }
       m[r.id] = ids
     }
     return m

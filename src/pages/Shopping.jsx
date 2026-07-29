@@ -159,7 +159,10 @@ export default function Shopping() {
   const actualByCategory = useMemo(() => {
     const m = {}
     for (const l of scopedLines) {
-      const catId = budgetCat[l.budget_id]
+      // Line category first, budget category as the fallback for pre-21 rows
+      // — same reason as the ledger filter: what a line was FOR is no longer
+      // the same question as which pot paid for it.
+      const catId = l.category_id || budgetCat[l.budget_id]
       const k = groupKey(catId, lk.categoryName[catId])
       m[k] = (m[k] || 0) + Number(l.amount)
     }

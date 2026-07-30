@@ -34,7 +34,9 @@ export default function Layout({ children }) {
     <div className="app">
       <aside className="sidebar">
         <div className="brand">
-          <div className="tick" />
+          {/* The cropped emblem, not the full lockup: at this size the
+              wordmark and the two team names are unreadable mush. */}
+          <img src="./logo-mark.png" alt="" className="brand-mark" width="34" height="34" />
           <div>
             <small>Neat Team 1943</small>
             <b>Finance</b>

@@ -111,6 +111,16 @@ label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 
 }
 .brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 18px; }
 .brand .tick { width: 10px; height: 26px; background: var(--orange); border-radius: 2px; }
+.brand-mark {
+  width: 34px; height: 34px; flex: 0 0 auto; border-radius: 8px;
+  /* The artwork carries its own dark background, so it needs no plate — the
+     rounded corner is only so it does not read as a stray photo. */
+  display: block;
+}
+.login-logo {
+  display: block; width: min(13rem, 55%); height: auto; margin: 0 auto 4px;
+  border-radius: 14px;
+}
 .brand small { display: block; color: var(--text-faint); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
 .brand b { font-family: var(--font-display); font-size: 16px; }
 
@@ -172,12 +182,25 @@ label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 
 }
 .stat .v {
   font-family: var(--font-mono); font-weight: 700; margin-top: 8px;
-  /* Fallback for anything without container queries: viewport-based, as before. */
-  font-size: clamp(0.85rem, 4.4vw, 1.625rem);
-  white-space: nowrap; min-width: 0;
+  min-width: 0;
+
+  /* NOT nowrap. Tuning a coefficient until the number happens to fit was the
+     wrong approach twice over: the formatted string is 14 characters, not the
+     11 or 12 it looks like — Intl adds an RTL mark, a non-breaking space and
+     the ₪ — and no coefficient can be right for every card width, font and
+     value. Allowing a break makes overflow structurally impossible: the worst
+     case is two lines, which is honest, instead of a currency symbol rendered
+     outside its own card.
+
+     break-word, NOT anywhere: digits are never split. money() now emits an
+     ordinary space before the ₪, so that space is the break point — the worst
+     case is "111,547.90" on one line and "₪" on the next. */
+  overflow-wrap: break-word;
+  font-size: clamp(0.8rem, 4vw, 1.5rem);
 }
 @supports (container-type: inline-size) {
-  .stat .v { font-size: clamp(0.85rem, 11cqi, 1.625rem); }
+  /* 9cqi keeps a 14-character figure on one line down to a ~120px card. */
+  .stat .v { font-size: clamp(0.8rem, 9cqi, 1.5rem); }
 }
 
 /* ---------- Table ---------- */

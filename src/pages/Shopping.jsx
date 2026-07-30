@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts'
 import { supabase, withTimeout } from '../lib/supabase'
+import { useRefreshOnReturn } from '../lib/useRefreshOnReturn'
 import { useAuth } from '../context/AuthContext'
 import { useSeason } from '../context/SeasonContext'
 import { useI18n } from '../lib/i18n'
@@ -70,16 +71,7 @@ export default function Shopping() {
   // Re-fetch on returning to the tab so a request Chrome dropped in the
   // background gets a fresh attempt — silent, since load() above won't show
   // a spinner while data is already on screen.
-  useEffect(() => {
-    const onFocus = () => { if (activeId && session?.user?.id) load() }
-    const onVis = () => { if (!document.hidden) onFocus() }
-    window.addEventListener('focus', onFocus)
-    document.addEventListener('visibilitychange', onVis)
-    return () => {
-      window.removeEventListener('focus', onFocus)
-      document.removeEventListener('visibilitychange', onVis)
-    }
-  }, [activeId, uid])
+  useRefreshOnReturn(load, { enabled: !!(activeId && uid), deps: [activeId, uid] })
 
   // The FRC/FTC checklist is applied here, once — every chart, the table and
   // the export all read from `enriched`, so none of them can drift out of sync
@@ -383,7 +375,21 @@ export default function Shopping() {
                         </select>
                       ) : <span className="badge">{t(r.status)}</span>}
                     </td>
-                    <td>{r.url ? <a href={r.url} target="_blank" rel="noreferrer">{t('openLink')} ↗</a> : '—'}</td>
+                    <td>
+                      {(() => {
+                        const links = r.urls?.length ? r.urls : (r.url ? [r.url] : [])
+                        if (!links.length) return '—'
+                        return (
+                          <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 2 }}>
+                            {links.map((u, i) => (
+                              <a key={u + i} href={u} target="_blank" rel="noreferrer" style={{ whiteSpace: 'nowrap' }}>
+                                {links.length > 1 ? `${t('openLink')} ${i + 1} ↗` : `${t('openLink')} ↗`}
+                              </a>
+                            ))}
+                          </span>
+                        )
+                      })()}
+                    </td>
                     {(canAddShopping || canTransact) && (
                       <td style={{ whiteSpace: 'nowrap' }}>
                         {canBuy && <button className="btn btn-sm" onClick={() => buyOne(r)}>{t('buy')}</button>}

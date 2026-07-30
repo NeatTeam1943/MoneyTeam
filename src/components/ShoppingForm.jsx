@@ -17,7 +17,7 @@ export default function ShoppingForm({ editing, seasonId, categoryTree, vendorsA
 
   const [f, setF] = useState(() => ({
     name: editing?.name || '',
-    url: editing?.url || '',
+    urls: (editing?.urls?.length ? editing.urls : (editing?.url ? [editing.url] : [''])),
     sku: editing?.sku || '',
     category_id: editing?.category_id || '',
     vendor: editing?.vendor || '',
@@ -64,7 +64,9 @@ export default function ShoppingForm({ editing, seasonId, categoryTree, vendorsA
     const payload = {
       season_id: seasonId,
       name: f.name.trim(),
-      url: f.url || null,
+      // The trigger strips blanks and duplicates and keeps `url` in step, so
+      // the form can send the list as typed.
+      urls: (f.urls || []).map((u) => u.trim()).filter(Boolean),
       sku: f.sku.trim(),
       category_id: f.category_id,
       vendor: f.vendor || null,
@@ -113,7 +115,21 @@ export default function ShoppingForm({ editing, seasonId, categoryTree, vendorsA
       </div>
 
       <div className="field"><label>{t('name')} *</label><input value={f.name} onChange={set('name')} /></div>
-      <div className="field"><label>{t('url')}</label><input value={f.url} onChange={set('url')} placeholder="https://" /></div>
+      <div className="field">
+        <label>{t('links')}</label>
+        {(f.urls.length ? f.urls : ['']).map((u, i) => (
+          <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+            <input value={u} placeholder="https://" style={{ flex: 1 }}
+              onChange={(e) => setF({ ...f, urls: f.urls.map((x, idx) => (idx === i ? e.target.value : x)) })} />
+            {f.urls.length > 1 && (
+              <button type="button" className="btn btn-ghost btn-sm btn-danger"
+                onClick={() => setF({ ...f, urls: f.urls.filter((_, idx) => idx !== i) })}>✕</button>
+            )}
+          </div>
+        ))}
+        <button type="button" className="btn btn-sm"
+          onClick={() => setF({ ...f, urls: [...f.urls, ''] })}>+ {t('addLink')}</button>
+      </div>
       <div className="grid-2">
         <div className="field"><label>{t('sku')} (מק״ט) *</label><input value={f.sku} onChange={set('sku')} /></div>
         <div className="field">

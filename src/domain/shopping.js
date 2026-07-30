@@ -11,7 +11,11 @@ export function matchesSearch(row, needle) {
   if (!needle) return true
   const q = needle.trim().toLowerCase()
   if (!q) return true
-  return SEARCHABLE.some((f) => String(row[f] || '').toLowerCase().includes(q))
+  if (SEARCHABLE.some((f) => String(row[f] || '').toLowerCase().includes(q))) return true
+  // Links are searchable too — pasting part of a supplier URL is a natural way
+  // to find the row you already have open in another tab.
+  const links = row.urls?.length ? row.urls : (row.url ? [row.url] : [])
+  return links.some((u) => String(u || '').toLowerCase().includes(q))
 }
 
 export const isBuyable = (row) => BUYABLE_STATUSES.includes(row.status)

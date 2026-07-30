@@ -98,7 +98,7 @@ export function exportShopping(items, meta = {}) {
     'Est. total': r.est_price != null ? lineTotal(r) : '',
     Priority: r.priorityName || '',
     Status: r.status,
-    Link: r.url || '',
+    Links: (r.urls?.length ? r.urls : (r.url ? [r.url] : [])).join('\n'),
     Notes: r.notes || '',
   }))
   XLSX.utils.book_append_sheet(wb, provenanceSheet({ ...meta, rowCount: items.length }), 'About')

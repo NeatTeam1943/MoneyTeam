@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase, withTimeout } from '../lib/supabase'
+import { useRefreshOnReturn } from '../lib/useRefreshOnReturn'
 import { useAuth } from '../context/AuthContext'
 import { useSeason } from '../context/SeasonContext'
 import { useI18n } from '../lib/i18n'
@@ -84,16 +85,7 @@ export default function Transactions() {
   // without it, nothing would ever retry and the page could sit forever on
   // whatever it last managed to show. Safe because load() above only shows a
   // spinner when there's no data yet; a returning-user refresh is silent.
-  useEffect(() => {
-    const onFocus = () => { if (activeId && uid) load() }
-    const onVis = () => { if (!document.hidden) onFocus() }
-    window.addEventListener('focus', onFocus)
-    document.addEventListener('visibilitychange', onVis)
-    return () => {
-      window.removeEventListener('focus', onFocus)
-      document.removeEventListener('visibilitychange', onVis)
-    }
-  }, [activeId, uid])
+  useRefreshOnReturn(load, { enabled: !!(activeId && uid), deps: [activeId, uid] })
 
   const budgetOptions = useMemo(() => budgets.map((b) => ({
     id: b.id,

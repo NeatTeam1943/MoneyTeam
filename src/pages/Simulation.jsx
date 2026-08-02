@@ -121,7 +121,7 @@ export default function Simulation() {
   }).sort((a, b) => (a.label === t('overall') ? -1 : 0) - (b.label === t('overall') ? -1 : 0) || b.after - a.after),
     [budgets, lines, selected, scopedExtras, budgetCat, lk, t, ts])
 
-  const newlyOver = newlyOverOf(projectedBudgets)
+  const newlyOver = newlyOverOf(projectedBudgets, projectedBudgets.ownership)
 
   // Items whose category has no budget at all — easy to miss, and they quietly
   // consume cash without showing up against any line.

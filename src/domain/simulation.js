@@ -20,8 +20,28 @@ export function projectAccounts({ balances, incomes, picked, extras, accountFor,
 /** Accounts that are solvent today and would not be after the plan. */
 export const newlyNegative = (projected) => projected.filter((a) => a.after < 0 && a.before >= 0)
 
-/** Budgets that are within their limit today and would not be after the plan. */
-export const newlyOver = (projected) => projected.filter((b) => b.nowOver && !b.wasOver)
+/** Budgets that are within their limit today and would not be after the plan.
+ *
+ *  Only the MOST SPECIFIC budget in each affected chain is reported. A row in
+ *  "אוכל" also pushes "תחרויות" and "כללי" over, because those contain it —
+ *  that roll-up is correct and each row's own figures stay as they are. But
+ *  listing all three as warnings turns one problem into three, and a reader
+ *  counts warnings rather than tracing a budget hierarchy.
+ *
+ *  Reporting the innermost one is also the actionable one: it names the pot
+ *  that actually has to change.
+ */
+export function newlyOver(projected, ownership) {
+  const over = projected.filter((b) => b.nowOver && !b.wasOver)
+  if (!ownership) return over
+  const ids = new Set(over.map((b) => b.id))
+  // Drop any budget that has a descendant already in the list.
+  return over.filter((b) => !over.some((x) => {
+    let p = ownership[x.id]
+    while (p) { if (p === b.id) return true; p = ownership[p] }
+    return false
+  }) || !ids.size)
+}
 
 /** Projected burn per budget.
  *  `spent` is deliberately NOT program-filtered: a shared pot already consumed
@@ -49,7 +69,7 @@ export function projectBudgets({
     return resolveBudget(l.category_id, l.team_scope, budgets, parentOf).budget?.id ?? null
   }
 
-  return budgets.map((b) => {
+  const rows = budgets.map((b) => {
     const inScope = inScopeFor(b)
     const owned = ownership ? ownedBudgetIds(b.id, ownership) : null
     const absorbsUnattributed = ownership && !b.category_id
@@ -61,8 +81,24 @@ export function projectBudgets({
       }, 0)
       : lines.reduce((s, l) => s + (inScope(budgetCategory[l.budget_id]) ? toNumber(l.amount) : 0), 0)
 
-    const planned = picked.reduce((s, r) => s + (inScope(r.category_id) ? lineTotalOf(r) : 0), 0)
-      + extras.reduce((s, e) => s + (inScope(e.category_id) ? toNumber(e.amount) : 0), 0)
+    // Planned spend is attributed the same way real spend is: resolve the row
+    // to ONE budget, then count it for that budget and its ancestors.
+    //
+    // It used to match on category, so a single ₪85,620 row in "אוכל" was
+    // counted in full by אוכל, אוכל·FTC, תחרויות AND כללי — four budgets each
+    // reporting a new overspend caused by the same one row. `spent` was moved
+    // to the ownership model earlier; this half was left behind, so the two
+    // halves of the same figure disagreed.
+    const plannedOf = (row, amount) => {
+      if (!ownership) return inScope(row.category_id) ? amount : 0
+      const target = resolveBudget(row.category_id, row.team_scope, budgets, parentOf).budget?.id
+      if (target) return owned?.has(target) ? amount : 0
+      // Nothing covers that category: the overall pot absorbs it, exactly as
+      // unattributable real spend is absorbed.
+      return absorbsUnattributed ? amount : 0
+    }
+    const planned = picked.reduce((s, r) => s + plannedOf(r, lineTotalOf(r)), 0)
+      + extras.reduce((s, e) => s + plannedOf(e, toNumber(e.amount)), 0)
 
     const amount = toNumber(b.amount)
     const after = spent + planned
@@ -79,4 +115,8 @@ export function projectBudgets({
       nowOver: roundMoney(after - amount) > 0 && amount > 0,
     }
   })
+  // Attached so callers can collapse a chain of warnings to its innermost
+  // budget without rebuilding the ownership map themselves.
+  rows.ownership = ownership
+  return rows
 }

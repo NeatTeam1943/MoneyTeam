@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts'
 import { supabase, withTimeout } from '../lib/supabase'
+import { useRefreshOnReturn } from '../lib/useRefreshOnReturn'
 import { useAuth } from '../context/AuthContext'
 import { useSeason } from '../context/SeasonContext'
 import { useI18n } from '../lib/i18n'
@@ -58,16 +59,7 @@ export default function Budgets() {
   // Re-fetch on returning to the tab so a request Chrome dropped in the
   // background gets a fresh attempt — silent, since load() above won't show
   // a spinner while data is already on screen.
-  useEffect(() => {
-    const onFocus = () => { if (activeId && session?.user?.id) load() }
-    const onVis = () => { if (!document.hidden) onFocus() }
-    window.addEventListener('focus', onFocus)
-    document.addEventListener('visibilitychange', onVis)
-    return () => {
-      window.removeEventListener('focus', onFocus)
-      document.removeEventListener('visibilitychange', onVis)
-    }
-  }, [activeId, uid])
+  useRefreshOnReturn(load, { enabled: !!(activeId && uid), deps: [activeId, uid] })
 
   // A budget now owns its program (migration 20), so the filter reads it
   // directly instead of guessing from the category.

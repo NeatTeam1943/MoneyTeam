@@ -3,7 +3,15 @@ const ils = new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS',
 // `+ 0` collapses negative zero. Without it, a value that rounds to -0 prints
 // as "-0.00" — a deficit that does not exist. Belt and braces alongside
 // roundMoney; this is the last point before a number reaches a person.
-export const money = (n) => ils.format((Number(n) || 0) + 0)
+//
+// The NO-BREAK space Intl puts between the digits and the ₪ (U+00A0) is
+// replaced with an ordinary one. It is the only safe place the string can wrap:
+// with the no-break space the whole thing had to stay on one line, so in a
+// narrow card it overflowed and the ₪ was rendered outside the card entirely.
+// Forcing CSS to break "anywhere" instead would let it split mid-number —
+// "111,5 / 47.90" is worse than ugly, it is misreadable. Breaking before the
+// symbol gives "111,547.90" then "₪", which nobody can misread.
+export const money = (n) => ils.format((Number(n) || 0) + 0).replace(/\u00A0/g, ' ')
 export const num = (n) => new Intl.NumberFormat('he-IL', { maximumFractionDigits: 2 }).format(Number(n || 0))
 
 // A negative figure should read as negative at a glance — an account in

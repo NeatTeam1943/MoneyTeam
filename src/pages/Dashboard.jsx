@@ -4,6 +4,7 @@ import {
   PieChart, Pie, Cell, Legend,
 } from 'recharts'
 import { supabase } from '../lib/supabase'
+import { useRefreshOnReturn } from '../lib/useRefreshOnReturn'
 import { useSeason } from '../context/SeasonContext'
 import { useAuth } from '../context/AuthContext'
 import { useI18n } from '../lib/i18n'
@@ -59,16 +60,7 @@ export default function Dashboard() {
   // Re-fetch on returning to the tab so a request Chrome dropped in the
   // background gets a fresh attempt. Already silent — these are individual
   // .then() updates, not a loading flag, so nothing blanks the dashboard.
-  useEffect(() => {
-    const onFocus = () => loadDashboard()
-    const onVis = () => { if (!document.hidden) onFocus() }
-    window.addEventListener('focus', onFocus)
-    document.addEventListener('visibilitychange', onVis)
-    return () => {
-      window.removeEventListener('focus', onFocus)
-      document.removeEventListener('visibilitychange', onVis)
-    }
-  }, [activeId, uid])
+  useRefreshOnReturn(loadDashboard, { enabled: !!(activeId && uid), deps: [activeId, uid] })
 
   // One place where the top-bar FRC/FTC checklist is applied, so every stat,
   // chart and total below is filtered consistently — nothing can be "filtered"

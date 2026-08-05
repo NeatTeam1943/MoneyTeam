@@ -77,6 +77,12 @@ export default function Layout({ children }) {
             </button>
           </div>
           <div className="spacer" />
+          {/* Labelled, not just an icon: a bare moon glyph among four other
+              buttons is not discoverable — it was missed entirely. */}
+          <button className="btn btn-ghost btn-sm" onClick={theme.toggle}
+            aria-pressed={theme.isNeat} title={t('neatMode')}>
+            {theme.isNeat ? '☀' : '🌙'} {t('neatMode')}
+          </button>
           <button className="btn btn-ghost btn-sm" onClick={toggle}>{lang === 'he' ? 'EN' : 'עב'}</button>
           {/* Role labels are namespaced (role_*) on purpose. Plain `t(role)`
               collided with the category form's `parent` key, so a guest's

@@ -1,15 +1,20 @@
 import { supabase } from '../lib/supabase'
 import { useI18n } from '../lib/i18n'
+import { useTheme } from '../context/ThemeContext'
 import { useAuth } from '../context/AuthContext'
 
 export default function Login() {
   const { t, toggle, lang } = useI18n()
+  const theme = useTheme()
   const { enterGuestMode } = useAuth()
 
   return (
     <div className="center-screen">
       <div className="login-card">
         <div style={{ position: 'absolute', top: 18, insetInlineEnd: 18 }}>
+          <button className="btn btn-ghost btn-sm" onClick={theme.toggle} title={t('neatMode')}>
+            {theme.isNeat ? '☀' : '🌙'}
+          </button>
           <button className="btn btn-ghost btn-sm" onClick={toggle}>{lang === 'he' ? 'EN' : 'עב'}</button>
         </div>
         <div className="panel panel-pad">

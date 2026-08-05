@@ -7,14 +7,15 @@ import { useSeason } from '../context/SeasonContext'
 import { useI18n } from '../lib/i18n'
 import { useToast } from '../lib/toast'
 import { useLookups } from '../lib/useLookups'
-import { money, lineTotal } from '../lib/format'
+import { money, lineTotal, qtyOf } from '../lib/format'
 import { exportShopping } from '../lib/export'
 import ShoppingForm from '../components/ShoppingForm'
 import TransactionForm from '../components/TransactionForm'
 import { useTeamScope } from '../context/TeamScopeContext'
 import { TeamScopeBadge } from '../components/TeamScope'
+import DetailPanel from '../components/DetailPanel'
 import { filterRows, sortRows } from '../domain/shopping'
-import { BUYABLE_STATUSES } from '../domain/constants'
+import { BUYABLE_STATUSES, DEFAULT_SHOPPING_STATUSES } from '../domain/constants'
 
 const STATUSES = ['pending_approval', 'approved', 'ordered', 'received', 'cancelled']
 const axis = { fontSize: 12, fill: '#4c5570', fontFamily: 'Space Mono, monospace' }
@@ -36,11 +37,14 @@ export default function Shopping() {
   const [lines, setLines] = useState([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
+  const [detail, setDetail] = useState(null)
   const [editing, setEditing] = useState(null)
   const [showForm, setShowForm] = useState(false)
   const [selected, setSelected] = useState(() => new Set())
   const [buyOpen, setBuyOpen] = useState(false)
-  const [fStatus, setFStatus] = useState('')
+  // Defaults to everything still in flight. A list you open to see what is
+  // outstanding should not open full of items that already arrived.
+  const [fStatuses, setFStatuses] = useState(() => [...DEFAULT_SHOPPING_STATUSES])
   const [fPriority, setFPriority] = useState('')
 
   const rankOf = useMemo(() => Object.fromEntries(lk.levels.map((l) => [l.id, l.rank])), [lk.levels])
@@ -98,10 +102,10 @@ export default function Shopping() {
   // both directions and several search terms.
   const filtered = useMemo(
     () => sortRows(
-      filterRows(enriched, { search: q, status: fStatus, priority: fPriority }),
+      filterRows(enriched, { search: q, statuses: fStatuses, priority: fPriority }),
       sort,
       { rankOf, statusLabel: t }),
-    [enriched, fStatus, fPriority, q, rankOf, sort, t])
+    [enriched, fStatuses, fPriority, q, rankOf, sort, t])
 
   // "requested" = still wanted (not received / cancelled)
   const open = useMemo(() => enriched.filter((r) => BUYABLE_STATUSES.includes(r.status)), [enriched])
@@ -305,10 +309,30 @@ export default function Shopping() {
       </div>
 
       <div className="toolbar" style={{ marginTop: 18 }}>
-        <select value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
-          <option value="">{t('status')}: {t('all')}</option>
-          {STATUSES.map((s) => <option key={s} value={s}>{t(s)}</option>)}
-        </select>
+        {/* One toggle per status rather than a dropdown: the useful question
+            is "which of these am I looking at", and a single-select cannot
+            express it. Each chip carries its own count so the effect of a
+            click is visible before making it. */}
+        <div className="status-chips">
+          {STATUSES.map((st) => {
+            const on = fStatuses.includes(st)
+            const n = enriched.filter((r) => r.status === st).length
+            return (
+              <button key={st} type="button"
+                className={'chip' + (on ? ' chip-on' : '')}
+                aria-pressed={on}
+                onClick={() => setFStatuses(on
+                  ? fStatuses.filter((x) => x !== st)
+                  : [...fStatuses, st])}>
+                {t(st)} <span className="chip-count">{n}</span>
+              </button>
+            )
+          })}
+          <button type="button" className="btn btn-ghost btn-sm"
+            onClick={() => setFStatuses(fStatuses.length === STATUSES.length ? [] : [...STATUSES])}>
+            {fStatuses.length === STATUSES.length ? t('clearFilter') : t('all')}
+          </button>
+        </div>
         <select value={fPriority} onChange={(e) => setFPriority(e.target.value)}>
           <option value="">{t('priority')}: {t('all')}</option>
           {lk.levels.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
@@ -361,7 +385,9 @@ export default function Shopping() {
                   <tr key={r.id} style={done ? { opacity: 0.5, background: 'var(--panel-2)' } : undefined}>
                     {canSelect && <td><input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleSel(r.id)} style={{ width: 'auto' }} title={canBuy ? '' : t('notBuyable')} /></td>}
                     <td>{lvl ? <span className="pill" style={{ background: (lvl.color || '#8a8aa0') + '22', color: lvl.color || '#5b6472' }}>{lvl.name}</span> : '—'}</td>
-                    <td>{r.name}</td>
+                    <td>
+                      <button type="button" className="link-cell" onClick={() => setDetail(r)}>{r.name}</button>
+                    </td>
                     <td><TeamScopeBadge scope={r.team_scope} /></td>
                     <td className="mono" style={{ color: 'var(--text-dim)' }}>{r.sku || '—'}</td>
                     <td>{r.categoryName || '—'}</td>
@@ -417,6 +443,39 @@ export default function Shopping() {
           onClose={() => setBuyOpen(false)} onSaved={onBought}
         />
       )}
+      {detail && (
+        <DetailPanel
+          title={detail.name}
+          onClose={() => setDetail(null)}
+          canEdit={canAddShopping}
+          onEdit={() => { setEditing(detail); setDetail(null); setShowForm(true) }}
+          rows={[
+            { label: t('teamScope'), value: <TeamScopeBadge scope={detail.team_scope} /> },
+            { label: t('category'), value: detail.categoryName },
+            { label: t('sku'), value: detail.sku, mono: true },
+            { label: t('vendor'), value: detail.vendor },
+            { label: t('estPrice'), value: detail.est_price != null ? money(detail.est_price) : null, mono: true },
+            { label: t('quantity'), value: qtyOf(detail), mono: true },
+            { label: t('total'), value: money(lineTotal(detail)), mono: true },
+            { label: t('priority'), value: detail.priorityName },
+            { label: t('status'), value: t(detail.status) },
+            {
+              label: t('links'),
+              value: (() => {
+                const ls = detail.urls?.length ? detail.urls : (detail.url ? [detail.url] : [])
+                if (!ls.length) return null
+                return (
+                  <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 3 }}>
+                    {ls.map((u, i) => <a key={u + i} href={u} target="_blank" rel="noreferrer">{u}</a>)}
+                  </span>
+                )
+              })(),
+            },
+            { label: t('notes'), value: detail.notes, style: { whiteSpace: 'pre-wrap' } },
+          ]}
+        />
+      )}
+
       {showForm && (
         <ShoppingForm
           editing={editing} seasonId={activeId}

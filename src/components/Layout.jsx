@@ -4,12 +4,14 @@ import { useSeason } from '../context/SeasonContext'
 import { useI18n } from '../lib/i18n'
 import { useTeamScope } from '../context/TeamScopeContext'
 import { SCOPE_COLOR } from './TeamScope'
+import { useTheme } from '../context/ThemeContext'
 
 export default function Layout({ children }) {
   const { t, toggle, lang } = useI18n()
   const { member, role, signOut, isParent } = useAuth()
   const { seasons, activeId, setActiveId, loading: seasonsLoading } = useSeason()
   const ts = useTeamScope()
+  const theme = useTheme()
 
   const links = isParent
     ? [

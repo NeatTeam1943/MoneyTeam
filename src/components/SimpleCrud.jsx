@@ -208,7 +208,18 @@ function TreeName({ row, value }) {
 function renderCell(v, f, dynOpts = {}) {
   if (f.dynamic) return (dynOpts[f.key] || []).find((o) => o.id === v)?.name || '—'
   if (f.type === 'checkbox') return v ? '✓' : ''
-  if (f.type === 'color') return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ width: 12, height: 12, borderRadius: 3, background: v || '#8a8aa0' }} />{v || '—'}</span>
+  // The swatch IS the value. Printing "#1100ff" beside it tells a mentor
+  // nothing they cannot see, and it is the widest thing in the column.
+  // Kept in the title so it is still recoverable on hover.
+  if (f.type === 'color') return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} title={v || ''}>
+      <span style={{
+        width: 16, height: 16, borderRadius: 4, flex: '0 0 auto',
+        background: v || '#8a8aa0', border: '1px solid var(--line-strong)',
+      }} />
+      {!v && '—'}
+    </span>
+  )
   if (f.type === 'select') return (f.options.find((o) => o.value === v)?.label) || v || '—'
   return v ?? '—'
 }

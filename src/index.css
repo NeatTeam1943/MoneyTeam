@@ -296,6 +296,66 @@ html, body { max-width: 100%; overflow-x: hidden; }
 .main, .content { min-width: 0; }
 
 /* ===========================================================================
+   Neat mode — issue #5
+   ---------------------------------------------------------------------------
+   Dark mode in team colours: navy where black would be, orange where white
+   would be, red as the third colour.
+   ---------------------------------------------------------------------------
+   Only the variables are redefined. Every rule in this file already reads from
+   them, so the whole app themes itself and no component needs to know a theme
+   exists.
+
+   Two things are deliberately NOT recoloured:
+
+   * --ok and --danger. "Any third colour should be red" applies to the
+     palette, not to meaning: an overspend and a healthy balance have to stay
+     distinguishable, and painting both red would make every budget card look
+     like a warning. Red keeps its job as the alarm, and gets a lighter shade
+     here so it stays legible on navy.
+
+   * FRC blue / FTC red. Those identify the programs. Shifting them for a
+     theme would make the same badge mean different things on different
+     screens, so they are only lightened enough to read on a dark surface.
+
+   Orange on navy is 8.9:1 and body text is 13.6:1 — both well past AA. Orange
+   is used for emphasis and fills rather than long prose, where a saturated
+   colour is tiring to read.
+   =========================================================================== */
+[data-theme="neat"] {
+  --orange: #ff9100;
+  --orange-strong: #ffa733;
+  --blue: #4d7cff;            /* lifted: #1100ff is invisible against navy */
+  --blue-soft: #6f95ff;
+
+  --in: #ffa733;              /* money in  — the light "white" of this theme */
+  --out: #ff6b3d;             /* money out — orange pushed toward red */
+  --transfer: #9fb0d0;
+  --inkind: #b98cff;
+
+  --bg: #00061f;              /* the logo's navy, one step darker */
+  --bg-1: #000e33;
+  --panel: #041140;
+  --panel-2: #071a54;
+  --line: #12245e;
+  --line-strong: #29438f;
+
+  --text: #ffd9a8;            /* warm off-white: orange family, still readable */
+  --text-dim: #d3a56d;
+  --text-faint: #9c8163;
+
+  --ok: #2ee07a;              /* lifted for contrast on navy */
+  --danger: #ff5a6e;
+
+  --frc: #4d7cff;
+  --frc-accent: #ff9100;
+  --ftc: #ff4d63;
+  --ftc-accent: #ffffff;
+  --shared: #9fb0d0;
+
+  color-scheme: dark;
+}
+
+/* ===========================================================================
    Responsive layer
    ---------------------------------------------------------------------------
    One place for everything that has to adapt. Sizes are expressed in rem and
@@ -445,3 +505,39 @@ html, body { max-width: 100%; overflow-x: hidden; }
   .content { padding: 0; }
   .panel { break-inside: avoid; border-color: #999; }
 }
+
+/* Status chips on the shopping list — a filter you can see the state of at a
+   glance, rather than a dropdown that hides which single value is selected. */
+.status-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.chip {
+  font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+  padding: 5px 10px; border-radius: 999px;
+  border: 1px solid var(--line-strong); background: var(--bg-0);
+  color: var(--text-dim); white-space: nowrap;
+}
+.chip-on { background: var(--blue); border-color: var(--blue); color: #fff; }
+.chip-count { opacity: .65; font-weight: 400; margin-inline-start: 3px; }
+@media (hover: none) and (pointer: coarse) { .chip { min-height: 2.25rem; } }
+
+/* Read-only detail view. A definition list rather than a form: nothing here
+   is typed into, and the label/value pairing survives narrow screens by
+   stacking instead of squeezing. */
+.detail-list { margin: 0; }
+.detail-row {
+  display: grid; grid-template-columns: 8.5rem 1fr; gap: 10px;
+  padding: 8px 0; border-block-end: 1px solid var(--line);
+}
+.detail-row:last-child { border-block-end: none; }
+.detail-row dt { color: var(--text-faint); font-size: 12px; font-weight: 700; }
+.detail-row dd { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 560px) {
+  .detail-row { grid-template-columns: 1fr; gap: 2px; }
+}
+
+/* A table cell that opens its row's detail. Styled as text, not a button — it
+   should read as the value it is, with the affordance only on hover. */
+.link-cell {
+  font: inherit; color: inherit; background: none; border: 0; padding: 0;
+  text-align: start; cursor: pointer; overflow-wrap: anywhere;
+}
+.link-cell:hover, .link-cell:focus-visible { color: var(--blue); text-decoration: underline; }

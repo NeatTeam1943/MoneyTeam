@@ -46,10 +46,20 @@ export function sortRows(rows, sort, helpers) {
   })
 }
 
-export function filterRows(rows, { search, status, priority }, helpers) {
+/**
+ * @param {object} f  search, statuses (array — empty means no status filter),
+ *                    priority
+ *
+ * `statuses` replaced a single `status`: picking one status at a time cannot
+ * express "everything still in flight", which is the normal way to read this
+ * list. An empty array means no filtering at all, so "select none" and "select
+ * all" stay distinguishable.
+ */
+export function filterRows(rows, { search, statuses, priority }) {
+  const set = statuses?.length ? new Set(statuses) : null
   return rows.filter((r) =>
     matchesSearch(r, search)
-    && (!status || r.status === status)
+    && (!set || set.has(r.status))
     && (!priority || r.priority_level_id === priority))
 }
 

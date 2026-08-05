@@ -13,11 +13,16 @@ const t = (k) => k
 const enriched = D.shopping.map((r) => ({ ...r, categoryName: catName[r.category_id] || '', priorityName: lvlName[r.priority_level_id] || '' }))
 
 // ---- REFERENCE: Shopping filter + sort -------------------------------------
-function refFilterSort(rows, q, fStatus, fPriority, sort) {
+// UPDATED DELIBERATELY: filterRows now takes `statuses` (an array) instead of
+// a single `status`, so the shopping list can show several at once and default
+// to "everything not received or cancelled". The reference mirrors the new
+// signature; an empty array means no status filtering, exactly as '' did.
+function refFilterSort(rows, q, fStatuses, fPriority, sort) {
   const needle = q.trim().toLowerCase()
   const hit = (r) => !needle || [r.name, r.sku, r.vendor, r.categoryName, r.priorityName, r.notes, r.description]
     .some((v) => String(v || '').toLowerCase().includes(needle))
-  const out = rows.filter((r) => hit(r) && (!fStatus || r.status === fStatus) && (!fPriority || r.priority_level_id === fPriority))
+  const set = fStatuses?.length ? new Set(fStatuses) : null
+  const out = rows.filter((r) => hit(r) && (!set || set.has(r.status)) && (!fPriority || r.priority_level_id === fPriority))
   const { col, dir } = sort
   const mul = dir === 'asc' ? 1 : -1
   const val = (r) => {
@@ -108,15 +113,19 @@ for (const q of ['', 'kraken', 'אום', 'am-']) {
     for (const dir of ['asc','desc']) {
       const sort = { col, dir }
       eq(`shopping/${q||'(none)'}/${col}/${dir}`,
-        refFilterSort(enriched, q, '', '', sort),
-        sortRows(filterRows(enriched, { search: q, status: '', priority: '' }), sort,
+        refFilterSort(enriched, q, [], '', sort),
+        sortRows(filterRows(enriched, { search: q, statuses: [], priority: '' }), sort,
           { rankOf, statusLabel: t }))
     }
   }
 }
 // with status / priority filters too
-eq('shopping/status=approved', refFilterSort(enriched, '', 'approved', '', {col:'name',dir:'asc'}),
-  sortRows(filterRows(enriched, { search:'', status:'approved', priority:'' }), {col:'name',dir:'asc'}, { rankOf, statusLabel: t }))
+eq('shopping/status=approved', refFilterSort(enriched, '', ['approved'], '', {col:'name',dir:'asc'}),
+  sortRows(filterRows(enriched, { search:'', statuses:['approved'], priority:'' }), {col:'name',dir:'asc'}, { rankOf, statusLabel: t }))
+// several at once — the case the old single-select could not express
+eq('shopping/status=approved+ordered',
+  refFilterSort(enriched, '', ['approved','ordered'], '', {col:'name',dir:'asc'}),
+  sortRows(filterRows(enriched, { search:'', statuses:['approved','ordered'], priority:'' }), {col:'name',dir:'asc'}, { rankOf, statusLabel: t }))
 
 // simulation
 const picked = D.shopping.filter((r) => ['approved','pending_approval'].includes(r.status)).slice(0, 8)

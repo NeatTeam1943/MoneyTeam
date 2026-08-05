@@ -10,6 +10,7 @@ import { useLookups } from '../lib/useLookups'
 import { money } from '../lib/format'
 import { buildBudgetRows, groupSiblings } from '../domain/budgets'
 import { GROUPING, SCOPE } from '../domain/constants'
+import { emptyCalcRow, rowTotal, calcTotal, cleanCalc, calcStatus } from '../domain/budgetCalc'
 import Modal from '../components/Modal'
 import { catLabel } from '../context/LookupsContext'
 import { useTeamScope } from '../context/TeamScopeContext'
@@ -180,6 +181,33 @@ export default function Budgets() {
                   at, so the split is visible without the balance ever being
                   understated. */}
               {/* A split pot: the whole above, each program underneath. */}
+              {(() => {
+                const st = calcStatus(r.amount, r.calc)
+                if (!st.hasCalc) return null
+                return (
+                  <details style={{ marginTop: 6 }}>
+                    <summary style={{ fontSize: 12, color: 'var(--text-faint)', cursor: 'pointer' }}>
+                      {t('budgetCalc')}
+                      {!st.matches && <b style={{ color: 'var(--orange)' }}> · {t('calcDiffers')}</b>}
+                    </summary>
+                    <table className="data" style={{ marginTop: 4 }}>
+                      <tbody>
+                        {r.calc.map((c, i) => (
+                          <tr key={i}>
+                            <td style={{ fontSize: 12 }}>{c.label || '—'}</td>
+                            <td className="num mono" style={{ fontSize: 12 }}>{c.qty} × {money(c.unit)}</td>
+                            <td className="num mono" style={{ fontSize: 12 }}>{money(rowTotal(c))}</td>
+                          </tr>
+                        ))}
+                        <tr>
+                          <td colSpan={2} style={{ fontSize: 12, fontWeight: 700 }}>{t('total')}</td>
+                          <td className="num mono" style={{ fontSize: 12, fontWeight: 700 }}>{money(st.total)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </details>
+                )
+              })()}
               {r.parts && (
                 <div style={{ marginTop: 8, borderTop: '1px solid var(--line)', paddingTop: 6 }}>
                   {r.parts.map((p) => (
@@ -255,6 +283,8 @@ function BudgetForm({ editing, seasonId, categoryTree, existing, onClose, onSave
   const [categoryId, setCategoryId] = useState(editing?.category_id || '')
   const [amount, setAmount] = useState(editing?.amount || '')
   const [teamScope, setTeamScope] = useState(editing?.team_scope || 'both')
+  const [calc, setCalc] = useState(() => (editing?.calc?.length ? editing.calc : [emptyCalcRow()]))
+  const calcSum = calcTotal(calc)
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -266,7 +296,7 @@ function BudgetForm({ editing, seasonId, categoryTree, existing, onClose, onSave
   async function save() {
     if (!(Number(amount) >= 0)) { setErr(t('requiredField') + ': ' + t('amount')); return }
     setErr(''); setBusy(true)
-    const payload = { season_id: seasonId, category_id: categoryId || null, amount: Number(amount), team_scope: teamScope }
+    const payload = { season_id: seasonId, category_id: categoryId || null, amount: Number(amount), team_scope: teamScope, calc: cleanCalc(calc) }
     const res = editing
       ? await supabase.from('budgets').update(payload).eq('id', editing.id)
       : await supabase.from('budgets').insert(payload)
@@ -283,6 +313,45 @@ function BudgetForm({ editing, seasonId, categoryTree, existing, onClose, onSave
         <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? '…' : t('save')}</button>
       </>}
     >
+      {/* The working behind the figure. Filling it in is optional; the amount
+          stays authoritative either way, which is why "החל" is a button and
+          not automatic — rounding a total up is a decision, not a mistake. */}
+      <div className="field">
+        <label>{t('budgetCalc')}</label>
+        <p style={{ color: 'var(--text-faint)', fontSize: 12, margin: '0 0 6px' }}>{t('budgetCalcHint')}</p>
+        {calc.map((r, i) => (
+          <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <input placeholder={t('description')} value={r.label} style={{ flex: '2 1 10rem' }}
+              onChange={(e) => setCalc(calc.map((x, ix) => (ix === i ? { ...x, label: e.target.value } : x)))} />
+            <input type="number" step="any" placeholder={t('quantity')} value={r.qty} style={{ flex: '1 1 5rem' }}
+              onChange={(e) => setCalc(calc.map((x, ix) => (ix === i ? { ...x, qty: e.target.value } : x)))} />
+            <span style={{ color: 'var(--text-faint)' }}>×</span>
+            <input type="number" step="any" placeholder="₪" value={r.unit} style={{ flex: '1 1 5rem' }}
+              onChange={(e) => setCalc(calc.map((x, ix) => (ix === i ? { ...x, unit: e.target.value } : x)))} />
+            <span className="mono" style={{ flex: '0 0 6rem', textAlign: 'end', color: 'var(--text-dim)' }}>
+              {money(rowTotal(r))}
+            </span>
+            {calc.length > 1 && (
+              <button type="button" className="btn btn-ghost btn-sm btn-danger"
+                onClick={() => setCalc(calc.filter((_, ix) => ix !== i))}>✕</button>
+            )}
+          </div>
+        ))}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button type="button" className="btn btn-sm" onClick={() => setCalc([...calc, emptyCalcRow()])}>
+            + {t('addRow')}
+          </button>
+          {calcSum > 0 && (
+            <>
+              <b className="mono">{t('total')}: {money(calcSum)}</b>
+              <button type="button" className="btn btn-sm" onClick={() => setAmount(String(calcSum))}>
+                {t('applyToAmount')}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
       <div className="field">
         <label>{t('teamScope')}</label>
         <TeamScopePicker value={teamScope} onChange={setTeamScope} />

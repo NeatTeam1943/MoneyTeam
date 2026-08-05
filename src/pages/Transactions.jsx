@@ -16,6 +16,7 @@ import { attributableAmount } from '../lib/teamScope'
 import { TX } from '../domain/constants'
 import ReceiptPreview from '../components/ReceiptPreview'
 import ApprovalQueue from '../components/ApprovalQueue'
+import DetailPanel from '../components/DetailPanel'
 
 export default function Transactions() {
   const { t } = useI18n()
@@ -35,6 +36,7 @@ export default function Transactions() {
   const [showForm, setShowForm] = useState(false)
   const [preview, setPreview] = useState(null)   // { path, number }
   const [decidingId, setDecidingId] = useState(null)
+  const [detail, setDetail] = useState(null)
 
   const [q, setQ] = useState('')
   const [fType, setFType] = useState('')
@@ -328,7 +330,11 @@ export default function Transactions() {
                 </td>
                 <td>{r.type === 'transfer' ? `${r.accountName} → ${r.toAccountName}` : r.accountName || '—'}</td>
                 <td>{r.type === 'expense' ? (r.budgetName || '—') : (r.categoryName || r.sourceName || '—')}</td>
-                <td style={{ color: 'var(--text-dim)' }}>{r.description || r.vendor || '—'}</td>
+                <td>
+                  <button type="button" className="link-cell" onClick={() => setDetail(r)}>
+                    {r.description || r.vendor || '—'}
+                  </button>
+                </td>
                 {!isParent && <td style={{ color: 'var(--text-dim)' }}>{r.payer_display || '—'}</td>}
                 {!isParent && <td><Receipt path={r.receipt_url} number={r.receipt_number} onOpen={setPreview} /></td>}
                 {(canTransact || canPropose) && (
@@ -368,6 +374,45 @@ export default function Transactions() {
       </div>
 
       {isMentor && <ApprovalQueue rows={pendingRows} onDecide={decide} busyId={decidingId} />}
+
+      {detail && (
+        <DetailPanel
+          title={detail.description || detail.vendor || t('transaction')}
+          onClose={() => setDetail(null)}
+          canEdit={canTransact}
+          onEdit={() => { setEditing(detail); setDetail(null); setShowForm(true) }}
+          rows={[
+            { label: t('date'), value: fmtDate(detail.date), mono: true },
+            { label: t('type'), value: t(detail.type) },
+            { label: t('teamScope'), value: <TeamScopeBadge scope={detail.team_scope} /> },
+            { label: t('amount'), value: detail.type === TX.IN_KIND ? '—' : money(detail.amount), mono: true },
+            { label: t('account'), value: detail.accountName },
+            { label: t('vendor'), value: detail.vendor },
+            { label: t('source'), value: detail.sourceName },
+            { label: t('category'), value: detail.categoryLabel },
+            !isParent && { label: t('payer'), value: detail.payer_display },
+            { label: t('notes'), value: detail.notes, style: { whiteSpace: 'pre-wrap' } },
+          ]}
+          footer={(txLines[detail.id] || []).length > 1 && (
+            <>
+              {/* A split purchase is only understandable line by line — the
+                  header amount says nothing about which programs it covered. */}
+              <div className="section-title">{t('lines')}</div>
+              <table className="data">
+                <tbody>
+                  {(txLines[detail.id] || []).map((l) => (
+                    <tr key={l.id}>
+                      <td>{l.description || budgetLabel(l.budget_id)}</td>
+                      <td><TeamScopeBadge scope={l.team_scope} /></td>
+                      <td className="num mono">{money(l.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+        />
+      )}
 
       {preview && <ReceiptPreview path={preview.path} number={preview.number} onClose={() => setPreview(null)} />}
 

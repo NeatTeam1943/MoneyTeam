@@ -54,5 +54,13 @@ export const BUYABLE_STATUSES = Object.freeze([SHOPPING_STATUS.PENDING, SHOPPING
 /** Statuses that still count as "waiting to be bought". */
 export const OPEN_STATUSES = BUYABLE_STATUSES
 
+/** What the shopping list shows before anyone touches the filter.
+ *  Everything except the two that are finished with: a received item has
+ *  arrived and a cancelled one is not happening, so neither is something you
+ *  are still working through. Both remain one click away. */
+export const DEFAULT_SHOPPING_STATUSES = Object.freeze(
+  Object.values(SHOPPING_STATUS).filter(
+    (s) => s !== SHOPPING_STATUS.RECEIVED && s !== SHOPPING_STATUS.CANCELLED))
+
 /** Category roll-up modes for the budget chart. */
 export const GROUPING = Object.freeze({ DIRECT: 'direct', PARENT: 'parent' })

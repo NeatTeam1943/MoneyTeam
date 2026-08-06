@@ -322,38 +322,72 @@ html, body { max-width: 100%; overflow-x: hidden; }
    colour is tiring to read.
    =========================================================================== */
 [data-theme="neat"] {
-  --orange: #ff9100;
-  --orange-strong: #ffa733;
-  --blue: #4d7cff;            /* lifted: #1100ff is invisible against navy */
-  --blue-soft: #6f95ff;
+  /* Sampled from the team emblem, not guessed: #0522d6 is 55% of the image and
+     #ff4f13 is the tool handles. The orange is far redder than the #ebaf23 we
+     had been using, which is why the theme did not look like the team.
 
-  --in: #ffa733;              /* money in  — the light "white" of this theme */
-  --out: #ff6b3d;             /* money out — orange pushed toward red */
-  --transfer: #9fb0d0;
+     Each colour is used where it measures well rather than everywhere:
+
+       #0522d6  1.97:1 on the panel — a FILL only. As text it is invisible.
+       #ff4f13  5.52:1 — works as text AND as a fill, with BLACK on it
+                (6.38:1); white on it is 3.29:1 and would fail.
+       #6f8cff  a lighter sibling of the emblem blue, for text and links. */
+  --blue: #0522d6;            /* fills, active tabs, focus rings */
+  --blue-soft: #1a37e8;
+  --blue-text: #6f8cff;       /* the same blue, readable as text */
+
+  --orange: #ff4f13;          /* straight from the emblem */
+  --orange-strong: #ff6b3d;
+
+  --in: #6f8cff;              /* money in  — blue family */
+  --out: #ff8351;             /* money out — orange, lifted for long figures */
+  --transfer: #93a4c8;
   --inkind: #b98cff;
 
-  --bg: #00061f;              /* the logo's navy, one step darker */
-  --bg-1: #000e33;
-  --panel: #041140;
-  --panel-2: #071a54;
-  --line: #12245e;
-  --line-strong: #29438f;
+  /* Every surface is #0522d6 mixed toward black, so the background IS the
+     team's blue rather than a neutral navy that resembles it.
+     Undiluted it cannot be a panel: it drops six of seven text colours below
+     AA, and a #0522d6 button on a #0522d6 card is 1.00:1 — invisible. */
+  --bg: #030720;              /* page */
+  --bg-1: #050c33;            /* inset wells, track backgrounds */
+  --panel: #04092a;           /* cards */
+  --panel-2: #081145;         /* raised: sidebar, table heads, hover */
+  --line: #14246b;
+  --line-strong: #1f3392;
 
-  --text: #ffd9a8;            /* warm off-white: orange family, still readable */
-  --text-dim: #d3a56d;
-  --text-faint: #9c8163;
+  --text: #eaf0ff;
+  --text-dim: #a9b8dd;
+  --text-faint: #7386b0;
 
-  --ok: #2ee07a;              /* lifted for contrast on navy */
+  --ok: #2ee07a;
   --danger: #ff5a6e;
 
-  --frc: #4d7cff;
-  --frc-accent: #ff9100;
+  --frc: #0522d6;
+  --frc-accent: #ff4f13;
   --ftc: #ff4d63;
   --ftc-accent: #ffffff;
-  --shared: #9fb0d0;
+  --shared: #93a4c8;
 
   color-scheme: dark;
 }
+
+/* The emblem orange is bright enough that white on it fails (3.29:1) while
+   black passes (6.38:1). Primary buttons therefore carry black text in this
+   theme — the one place the light theme's white would be unreadable. */
+[data-theme="neat"] .btn-primary { color: #000; }
+
+[data-theme="neat"] .sidebar {
+  background: linear-gradient(180deg, #0c1856 0%, #04092a 100%);
+  border-inline-end-color: var(--line-strong);
+}
+[data-theme="neat"] .topbar { background: #060d38; }
+[data-theme="neat"] .nav-link.active { background: var(--blue); color: #fff; }
+
+/* Links and any bare text-blue switch to the readable sibling; the saturated
+   one stays for fills, where white sits on top of it. */
+[data-theme="neat"] a { color: var(--blue-text); }
+[data-theme="neat"] .link-cell:hover,
+[data-theme="neat"] .link-cell:focus-visible { color: var(--blue-text); }
 
 /* ===========================================================================
    Responsive layer
@@ -538,7 +572,18 @@ html, body { max-width: 100%; overflow-x: hidden; }
    should read as the value it is, with the affordance only on hover. */
 .link-cell {
   font: inherit; color: inherit; background: none; border: 0; padding: 0;
-  text-align: start; cursor: pointer; overflow-wrap: anywhere;
+  text-align: start; cursor: pointer;
+
+  /* display:block + width:100% is the fix, not decoration. A <button> is
+     inline-block and shrink-to-fit, so inside a table cell it collapsed to the
+     width of its narrowest word and every word broke into single letters. It
+     has to fill the cell like the plain text it replaced.
+
+     break-word, not anywhere: `anywhere` lets the browser count mid-word
+     breaks when computing the column's minimum width, which is what let the
+     column get so narrow in the first place. */
+  display: block; width: 100%;
+  overflow-wrap: break-word;
   /* A permanent dotted underline. Relying on hover meant the row looked
      identical to plain text — and on a phone, where there is no hover, there
      was no signal at all that it could be opened. */
@@ -548,3 +593,20 @@ html, body { max-width: 100%; overflow-x: hidden; }
 .link-cell:hover, .link-cell:focus-visible {
   color: var(--blue); text-decoration: underline solid currentColor;
 }
+
+/* A description of eight items should not make its row 40 lines tall. Two
+   lines, then an ellipsis — the whole text is in the detail panel, which is
+   what clicking the row opens. */
+.link-cell.clamp-2 {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+/* On a phone there is no hover, so the dotted underline is the only signal
+   that a row opens — make it unmistakable rather than subtle. */
+@media (hover: none) and (pointer: coarse) {
+  .link-cell { text-decoration-color: var(--blue); }
+}
+/* The description column is the one that carries prose, so it gets room
+   rather than being squeezed to the width of the numbers beside it. */
+table.data td.desc-cell { min-width: 12rem; }
+@media (max-width: 900px) { table.data td.desc-cell { min-width: 14rem; } }

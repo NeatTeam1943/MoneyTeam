@@ -330,8 +330,10 @@ export default function Transactions() {
                 </td>
                 <td>{r.type === 'transfer' ? `${r.accountName} → ${r.toAccountName}` : r.accountName || '—'}</td>
                 <td>{r.type === 'expense' ? (r.budgetName || '—') : (r.categoryName || r.sourceName || '—')}</td>
-                <td>
-                  <button type="button" className="link-cell" onClick={() => setDetail(r)}>
+                <td className="desc-cell">
+                  <button type="button" className="link-cell clamp-2"
+                    title={r.description || r.vendor || ''}
+                    onClick={() => setDetail(r)}>
                     {r.description || r.vendor || '—'}
                   </button>
                 </td>

@@ -80,6 +80,12 @@ export default function Dashboard() {
 
   const totals = useMemo(() => totalsOf(rows, ts.all), [rows, ts])
 
+  // The real money: what the accounts actually hold, carry-over included.
+  // Never program-filtered — accounts are shared, and a filtered balance would
+  // be a number that does not exist anywhere.
+  const cashOnHand = useMemo(
+    () => balances.reduce((s, b) => s + (Number(b.balance) || 0), 0), [balances])
+
   const overBudget = useMemo(() => overBudgetOf({
     budgets, allRows, allLines, matchesTeam: ts.matches, allProgramsShown: ts.all,
   }), [allRows, allLines, budgets, ts])
@@ -108,6 +114,14 @@ export default function Dashboard() {
       <div className="stats">
         <Stat k={t('totalIncome')} v={money(totals.income)} c="var(--in)" />
         <Stat k={t('totalExpense')} v={money(totals.expense)} c="var(--out)" />
+        {/* The sum of every account balance, beside the season net.
+            They answer different questions: net is "did this season earn more
+            than it spent" and can be negative for a good reason; this is "how
+            much money is actually there". With no income yet this season the
+            net is negative and correct — but on its own it reads as "we have
+            nothing", which is not true. */}
+        <Stat k={t('balanceOnHand')} v={money(cashOnHand)}
+          c={cashOnHand < 0 ? 'var(--danger)' : 'var(--ok)'} />
         <Stat k={t('net')} v={totals.net === null ? '—' : money(totals.net)}
           c={totals.net === null ? 'var(--text-faint)' : (totals.net >= 0 ? 'var(--ok)' : 'var(--danger)')} />
         {!isParent && <Stat k={t('overBudget')} v={overBudget.hasBudget ? money(overBudget.over) : '—'} c={overBudget.over > 0 ? 'var(--danger)' : 'var(--ok)'} />}

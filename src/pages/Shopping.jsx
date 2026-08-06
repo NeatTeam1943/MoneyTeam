@@ -385,8 +385,9 @@ export default function Shopping() {
                   <tr key={r.id} style={done ? { opacity: 0.5, background: 'var(--panel-2)' } : undefined}>
                     {canSelect && <td><input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleSel(r.id)} style={{ width: 'auto' }} title={canBuy ? '' : t('notBuyable')} /></td>}
                     <td>{lvl ? <span className="pill" style={{ background: (lvl.color || '#8a8aa0') + '22', color: lvl.color || '#5b6472' }}>{lvl.name}</span> : '—'}</td>
-                    <td>
-                      <button type="button" className="link-cell" onClick={() => setDetail(r)}>{r.name}</button>
+                    <td className="desc-cell">
+                      <button type="button" className="link-cell clamp-2" title={r.name}
+                        onClick={() => setDetail(r)}>{r.name}</button>
                     </td>
                     <td><TeamScopeBadge scope={r.team_scope} /></td>
                     <td className="mono" style={{ color: 'var(--text-dim)' }}>{r.sku || '—'}</td>

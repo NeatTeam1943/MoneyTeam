@@ -18,8 +18,19 @@ import { filterRows, sortRows } from '../domain/shopping'
 import { BUYABLE_STATUSES, DEFAULT_SHOPPING_STATUSES } from '../domain/constants'
 
 const STATUSES = ['pending_approval', 'approved', 'ordered', 'received', 'cancelled']
-const axis = { fontSize: 12, fill: '#4c5570', fontFamily: 'Space Mono, monospace' }
-const tip = { background: '#fff', border: '1px solid #c6cde0', borderRadius: 8, fontSize: 13, color: '#151a2b' }
+// Axis labels and grid lines follow the theme too: #4c5570 on a dark panel is
+// 2.3:1 and #dde2ee grid lines glow. SVG resolves CSS variables the same way
+// the rest of the app does.
+const axis = { fontSize: 12, fill: 'var(--text-dim)', fontFamily: 'Space Mono, monospace' }
+// Reads the theme's variables rather than baking in light colours — a white
+// tooltip on a dark chart is a bright rectangle nobody can read.
+const tip = {
+  background: 'var(--panel)',
+  border: '1px solid var(--line-strong)',
+  borderRadius: 8,
+  fontSize: 13,
+  color: 'var(--text)',
+}
 
 export default function Shopping() {
   const { t } = useI18n()
@@ -274,7 +285,7 @@ export default function Shopping() {
           <div className="chart-box-short" style={{ direction: 'ltr' }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={byStatus} margin={{ left: 8, right: 8 }}>
-                <CartesianGrid stroke="#dde2ee" vertical={false} />
+                <CartesianGrid stroke="var(--line)" vertical={false} />
                 <XAxis dataKey="name" tick={axis} /><YAxis tick={axis} width={60} allowDecimals={false} />
                 <Tooltip contentStyle={tip} formatter={(v) => money(v)} />
                 <Bar dataKey="value" fill="#1100ff" radius={[3, 3, 0, 0]} />

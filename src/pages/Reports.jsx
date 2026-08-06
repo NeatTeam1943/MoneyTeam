@@ -19,8 +19,19 @@ import { buildBudgetRows } from '../domain/budgets'
 import { money, fmtDate, monthKey, typeColor, amountColor, signedColor, lineTotal } from '../lib/format'
 import { exportReport } from '../lib/export'
 
-const axis = { fontSize: 12, fill: '#4c5570', fontFamily: 'Space Mono, monospace' }
-const tip = { background: '#fff', border: '1px solid #c6cde0', borderRadius: 8, fontSize: 13, color: '#151a2b' }
+// Axis labels and grid lines follow the theme too: #4c5570 on a dark panel is
+// 2.3:1 and #dde2ee grid lines glow. SVG resolves CSS variables the same way
+// the rest of the app does.
+const axis = { fontSize: 12, fill: 'var(--text-dim)', fontFamily: 'Space Mono, monospace' }
+// Reads the theme's variables rather than baking in light colours — a white
+// tooltip on a dark chart is a bright rectangle nobody can read.
+const tip = {
+  background: 'var(--panel)',
+  border: '1px solid var(--line-strong)',
+  borderRadius: 8,
+  fontSize: 13,
+  color: 'var(--text)',
+}
 const iso = (d) => d.toISOString().slice(0, 10)
 const SCOPE_FILL = { frc: '#1100ff', ftc: '#c8102e', both: '#5b6472' }
 // #e0384c dropped: too close to both --danger and the FTC red to be a
@@ -229,7 +240,7 @@ export default function Reports() {
           <Chart title={t('incomeVsExpense')} note={t('noteIncomeVsExpense')}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={byMonth} margin={{ top: 6, right: 8, left: 8, bottom: 6 }}>
-                <CartesianGrid stroke="#dde2ee" vertical={false} />
+                <CartesianGrid stroke="var(--line)" vertical={false} />
                 <XAxis dataKey="month" tick={axis} /><YAxis tick={axis} width={64} />
                 <Tooltip contentStyle={tip} formatter={(v) => money(v)} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
@@ -242,7 +253,7 @@ export default function Reports() {
           <Chart title={t('cumulativeNet')} note={t('noteCumulative')}>
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={cumulative} margin={{ top: 6, right: 8, left: 8, bottom: 6 }}>
-                <CartesianGrid stroke="#dde2ee" vertical={false} />
+                <CartesianGrid stroke="var(--line)" vertical={false} />
                 <XAxis dataKey="month" tick={axis} /><YAxis tick={axis} width={72} />
                 <Tooltip contentStyle={tip} formatter={(v) => money(v)} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
@@ -311,7 +322,7 @@ export default function Reports() {
           <Chart title={t('budgetUse')} note={t('noteBudgetUse')} height="chart-box-tall">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={budgetChart} layout="vertical" margin={{ left: 8, right: 16 }}>
-                <CartesianGrid stroke="#dde2ee" horizontal={false} />
+                <CartesianGrid stroke="var(--line)" horizontal={false} />
                 <XAxis type="number" tick={axis} />
                 <YAxis type="category" dataKey="name" tick={axis} width={150} interval={0} />
                 <Tooltip contentStyle={tip} formatter={(v) => money(v)} />

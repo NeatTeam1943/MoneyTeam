@@ -16,7 +16,10 @@ import ScopeNotice from '../components/ScopeNotice'
 import { totalsOf, byMonthOf, overBudgetOf, topAncestorNameFactory, groupSum } from '../domain/ledger'
 import { GROUPING } from '../domain/constants'
 
-const axis = { fontSize: 12, fill: '#4c5570', fontFamily: 'Space Mono, monospace' }
+// Axis labels and grid lines follow the theme too: #4c5570 on a dark panel is
+// 2.3:1 and #dde2ee grid lines glow. SVG resolves CSS variables the same way
+// the rest of the app does.
+const axis = { fontSize: 12, fill: 'var(--text-dim)', fontFamily: 'Space Mono, monospace' }
 const CATCOLORS = ['#ff9100', '#4d63ff', '#b06bff', '#35c26b', '#ff4d5e', '#ffc14d', '#7aa0ff', '#d98aff']
 
 export default function Dashboard() {
@@ -138,7 +141,7 @@ export default function Dashboard() {
       <div className="panel panel-pad chart-box-tall" style={{ direction: 'ltr' }}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={byMonth} margin={{ top: 6, right: 8, left: 8, bottom: 6 }}>
-            <CartesianGrid stroke="#dde2ee" vertical={false} />
+            <CartesianGrid stroke="var(--line)" vertical={false} />
             <XAxis dataKey="month" tick={axis} />
             <YAxis tick={axis} width={60} />
             <Tooltip contentStyle={tip} formatter={(v) => money(v)} />
@@ -188,7 +191,15 @@ export default function Dashboard() {
   )
 }
 
-const tip = { background: '#ffffff', border: '1px solid #c6cde0', borderRadius: 8, fontSize: 13, color: '#151a2b' }
+// Reads the theme's variables rather than baking in light colours — a white
+// tooltip on a dark chart is a bright rectangle nobody can read.
+const tip = {
+  background: 'var(--panel)',
+  border: '1px solid var(--line-strong)',
+  borderRadius: 8,
+  fontSize: 13,
+  color: 'var(--text)',
+}
 
 function Stat({ k, v, c, small }) {
   return (

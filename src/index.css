@@ -24,6 +24,9 @@
   --text-dim: #4c5570;
   --text-faint: #858ba3;
 
+  --field: #ffffff;           /* form control background */
+  --focus-ring: rgba(17,0,255,.10);
+
   --ok: #12a150;
   --danger: #e0384c;
 
@@ -92,10 +95,13 @@ button { font-family: inherit; cursor: pointer; }
 /* ---------- Inputs ---------- */
 input, select, textarea {
   width: 100%; padding: 9px 11px; border-radius: var(--radius-sm);
-  border: 1px solid var(--line-strong); background: #fff; color: var(--text);
+  /* --field, not #fff. A hard-coded white here is why every input stayed
+     white in Neat mode while its text turned pale — unreadable. Themes can
+     only move what is a variable. */
+  border: 1px solid var(--line-strong); background: var(--field); color: var(--text);
   font-family: inherit; font-size: 14px;
 }
-input:focus, select:focus, textarea:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(17,0,255,.10); }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px var(--focus-ring); }
 label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 5px; font-weight: 600; }
 .field { margin-bottom: 14px; }
 
@@ -129,7 +135,7 @@ label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 
   color: var(--text-dim); font-weight: 600; font-size: 14px; border: 1px solid transparent;
 }
 .nav-link:hover { background: var(--panel-2); color: var(--text); text-decoration: none; }
-.nav-link.active { background: #fff; color: var(--text); border-color: var(--line-strong); }
+.nav-link.active { background: var(--panel); color: var(--text); border-color: var(--line-strong); }
 .nav-link.active .dot { background: var(--orange); }
 .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--line-strong); }
 
@@ -238,11 +244,11 @@ table.data tr:hover td { background: var(--panel-2); }
 .err { color: var(--danger); font-size: 13px; margin-top: 8px; font-weight: 600; }
 .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 18px; }
 .tab { padding: 8px 14px; border-radius: var(--radius-sm); border: 1px solid var(--line-strong); background: var(--panel); color: var(--text-dim); font-weight: 600; font-size: 14px; }
-.tab.active { border-color: var(--orange); color: var(--text); background: #fff; }
+.tab.active { border-color: var(--orange); color: var(--text); background: var(--panel); }
 
 /* ---------- Toasts ---------- */
 .toast-stack { position: fixed; top: 18px; inset-inline-end: 18px; display: flex; flex-direction: column; gap: 8px; z-index: 100; }
-.toast { padding: 11px 16px; border-radius: var(--radius-sm); font-size: 14px; font-weight: 600; border: 1px solid var(--line-strong); background: #fff; color: var(--text); box-shadow: 0 8px 30px rgba(20,26,43,.15); max-width: 340px; }
+.toast { padding: 11px 16px; border-radius: var(--radius-sm); font-size: 14px; font-weight: 600; border: 1px solid var(--line-strong); background: var(--panel); color: var(--text); box-shadow: 0 8px 30px rgba(0,0,0,.35); max-width: 340px; }
 .toast.success { border-inline-start: 3px solid var(--ok); }
 .toast.error { border-inline-start: 3px solid var(--danger); }
 
@@ -358,6 +364,11 @@ html, body { max-width: 100%; overflow-x: hidden; }
   --text: #eaf0ff;
   --text-dim: #a9b8dd;
   --text-faint: #7386b0;
+
+  /* Inputs sit slightly ABOVE the card they are on, so a field reads as a
+     place to type rather than a hole in the panel. */
+  --field: #0a1240;
+  --focus-ring: rgba(111,140,255,.25);
 
   --ok: #2ee07a;
   --danger: #ff5a6e;

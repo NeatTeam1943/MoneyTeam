@@ -13,7 +13,11 @@ import { useI18n } from '../lib/i18n'
 export default function DetailPanel({ title, rows, onClose, onEdit, canEdit, footer }) {
   const { t } = useI18n()
   return (
-    <Modal title={title} onClose={onClose} footer={
+    // confirmClose={false}: there is nothing to lose here. Asking "discard
+    // unsaved changes?" on a view with no inputs is a question the reader
+    // cannot answer, and it trains them to dismiss the warning that DOES
+    // matter on the edit form.
+    <Modal title={title} onClose={onClose} confirmClose={false} footer={
       <>
         <button className="btn btn-ghost" onClick={onClose}>{t('close')}</button>
         {canEdit && onEdit && (

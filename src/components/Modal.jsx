@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useI18n } from '../lib/i18n'
 
 // Accidental dismissals (a stray click on the backdrop, a reflex Escape) used
@@ -19,9 +19,25 @@ export default function Modal({ title, onClose, children, footer, confirmClose =
     return () => window.removeEventListener('keydown', onKey)
   }, [dismiss])
 
+  // A click is delivered to the nearest common ancestor of where the mouse
+  // went DOWN and where it came UP. Select text inside the form, drag past the
+  // edge and release, and that ancestor is the overlay — so the app decided you
+  // had clicked outside and offered to discard your work. Requiring the press
+  // to START on the backdrop makes a drag out of the dialog harmless.
+  const pressedOnBackdrop = useRef(false)
+
   return (
-    <div className="overlay" onClick={dismiss}>
-      <div className={"modal panel" + (wide ? " modal-wide" : "")} onClick={(e) => e.stopPropagation()}>
+    <div
+      className="overlay"
+      onMouseDown={(e) => { pressedOnBackdrop.current = e.target === e.currentTarget }}
+      onClick={(e) => {
+        if (e.target !== e.currentTarget) return
+        if (!pressedOnBackdrop.current) return
+        pressedOnBackdrop.current = false
+        dismiss()
+      }}
+    >
+      <div className={"modal panel" + (wide ? " modal-wide" : "")}>
         <div className="modal-head">
           <h2 style={{ fontSize: 17 }}>{title}</h2>
           <button className="btn btn-ghost btn-sm" onClick={onClose}>{t('close')}</button>

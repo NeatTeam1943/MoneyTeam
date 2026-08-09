@@ -13,7 +13,7 @@
 import { buildBudgetRows, groupSiblings } from '/tmp/A_budgets.mjs'
 import { buildOwnership } from '/tmp/A_budgetOwnership.mjs'
 import { totalsOf } from '/tmp/A_ledger.mjs'
-import { linesByTransaction, attributableAmount, touchesScope, spendByScope } from '/tmp/A_ts.mjs'
+import { linesByTransaction, attributableAmount, touchesScope, spendByScope, exclusiveVsShared } from '/tmp/A_ts.mjs'
 import { projectBudgets, newlyOver } from '/tmp/A_simulation.mjs'
 
 const f = (n) => Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -163,6 +163,26 @@ for (const [lbl, picked] of [['both', ['frc','ftc']], ['FRC only', ['frc']], ['F
   // income is shared and never split — it must stay whole
   check(`income stays whole, ${lbl}`, t.income, 20000)
   console.log(`  ${'net withheld under a partial filter'.padEnd(48)} ${t.net === null ? 'yes (—)' : 'NO: ' + f(t.net)}${ts.all ? '   (full view, so a number is right)' : ''}`)
+}
+
+console.log('\n=== exclusive vs shared, under a single-program filter ===')
+for (const [lbl, picked, wantEx, wantSh] of [
+  ['FRC only', ['frc'], 6000 + 4000, 1000],
+  ['FTC only', ['ftc'], 3000 + 1500, 1000],
+]) {
+  const ts0 = mk(picked)
+  const sp = exclusiveVsShared(tx, byTx, { ...ts0, frc: picked.includes('frc'), ftc: picked.includes('ftc') })
+  check(`${lbl}: exclusive`, sp.exclusive, wantEx)
+  check(`${lbl}: shared`,    sp.shared,    wantSh)
+  check(`${lbl}: parts sum to the filtered total`, sp.exclusive + sp.shared, sp.total)
+}
+{
+  // The shared part is why two filtered views must never be added together.
+  const a = exclusiveVsShared(tx, byTx, { frc: true, ftc: false, all: false })
+  const b = exclusiveVsShared(tx, byTx, { frc: false, ftc: true, all: false })
+  const ledger = lines.reduce((s, l) => s + l.amount, 0)
+  check('FRC total + FTC total - shared = ledger', a.total + b.total - a.shared, ledger)
+  check('full view returns no split', exclusiveVsShared(tx, byTx, { frc: true, ftc: true, all: true }) === null ? 1 : 0, 1)
 }
 
 console.log('\n=== by-program split of one mixed receipt ===')

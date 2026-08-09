@@ -9,8 +9,9 @@ import { useI18n } from '../lib/i18n'
 import { useToast } from '../lib/toast'
 import { useLookups } from '../lib/useLookups'
 import { useTeamScope } from '../context/TeamScopeContext'
-import { linesByTransaction, attributableAmount, touchesScope, spendByScope } from '../lib/teamScope'
+import { linesByTransaction, attributableAmount, touchesScope, spendByScope, exclusiveVsShared } from '../lib/teamScope'
 import ScopeNotice from '../components/ScopeNotice'
+import ShareTable from '../components/ShareTable'
 import {
   totalsOf, byMonthOf, cumulativeOf, byCategoryOf, bySourceOf,
   byVendorOf, byAccountOf, topExpensesOf,
@@ -228,6 +229,19 @@ export default function Reports() {
       <div className="stats">
         <Stat k={t('totalIncome')} v={money(totals.income)} c="var(--in)" />
         <Stat k={t('totalExpense')} v={money(totals.expense)} c="var(--out)" />
+        {(() => {
+          // Same split as the dashboard: under one program, what is that
+          // program's alone versus what is shared with the other.
+          const sp = exclusiveVsShared(rows.filter((r) => inPeriod(r.date)), byTx, ts)
+          if (!sp) return null
+          return (
+            <>
+              <Stat k={t('exclusiveTo').replace('{p}', sp.program.toUpperCase())}
+                v={money(sp.exclusive)} c="var(--out)" />
+              <Stat k={t('sharedPart')} v={money(sp.shared)} c="var(--text-dim)" />
+            </>
+          )
+        })()}
         <Stat k={t('net')} v={totals.net === null ? '—' : money(totals.net)}
           c={totals.net === null ? 'var(--text-faint)' : signedColor(totals.net)} />
         <Stat k={t('txCount')} v={String(scoped.length)} c="var(--text)" />
@@ -288,6 +302,7 @@ export default function Reports() {
                     <Legend wrapperStyle={{ fontSize: 12 }} />
                   </PieChart>
                 </ResponsiveContainer>
+                <ShareTable rows={byScope} colors={byScope.map((d) => SCOPE_FILL[d.key])} />
             </Chart>
           </div>
 
@@ -302,9 +317,9 @@ export default function Reports() {
                     {byCategory.map((_, i) => <Cell key={i} fill={CATFILL[i % CATFILL.length]} />)}
                   </Pie>
                   <Tooltip contentStyle={tip} formatter={(v) => money(v)} />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
                 </PieChart>
               </ResponsiveContainer>
+              <ShareTable rows={byCategory} colors={CATFILL} />
             </Chart>
 
             <Chart title={t('bySource')} note={t('noteBySourceChart')}>
@@ -314,10 +329,10 @@ export default function Reports() {
                     {bySource.map((_, i) => <Cell key={i} fill={CATFILL[(i + 3) % CATFILL.length]} />)}
                   </Pie>
                   <Tooltip contentStyle={tip} formatter={(v) => money(v)} />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
                 </PieChart>
               </ResponsiveContainer>
-            </Chart>
+              <ShareTable rows={bySource} colors={CATFILL.slice(3).concat(CATFILL.slice(0, 3))} />
+                          </Chart>
           </div>
 
           <Chart title={t('budgetUse')} note={t('noteBudgetUse')} height="chart-box-tall">

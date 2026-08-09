@@ -652,3 +652,8 @@ table.data td.desc-cell { min-width: 12rem; }
 .date-he:focus-within .date-he-text {
   border-color: var(--blue); box-shadow: 0 0 0 3px var(--focus-ring);
 }
+
+/* Figures beside a pie. Compact, because it sits under a chart rather than
+   being the main event. */
+.share-table { font-size: 12px; margin-top: 8px; }
+.share-table td { padding: 4px 6px; }

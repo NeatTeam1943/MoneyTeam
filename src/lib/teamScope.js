@@ -59,3 +59,39 @@ export function spendByScope(transactions, byTx) {
   }
   return out
 }
+
+/**
+ * Under a single-program filter, split what is on screen into the part that
+ * belongs to that program ALONE and the part that is shared.
+ *
+ * "FRC spending is 11,000" is true but hides a decision: some of that is FRC's
+ * own and some is a shared purchase that FTC benefits from equally. Those are
+ * different facts, and only the first can be moved or cut without affecting the
+ * other programme.
+ *
+ * It is also why two filtered views must never be added: the shared part
+ * appears in both, so FRC + FTC exceeds the ledger by exactly `shared`.
+ */
+export function exclusiveVsShared(transactions, byTx, ts) {
+  const program = ts.frc && !ts.ftc ? 'frc' : (ts.ftc && !ts.frc ? 'ftc' : null)
+  if (!program) return null
+
+  let exclusive = 0
+  let shared = 0
+  for (const tx of transactions) {
+    if (tx.type !== 'expense') continue
+    const own = byTx?.[tx.id]
+    if (!own || !own.length) {
+      // No lines: the header is all there is to go on.
+      if (tx.team_scope === program) exclusive += Number(tx.amount) || 0
+      else if (tx.team_scope === 'both') shared += Number(tx.amount) || 0
+      continue
+    }
+    for (const l of own) {
+      const amt = Number(l.amount) || 0
+      if (l.team_scope === program) exclusive += amt
+      else if (l.team_scope === 'both' || !l.team_scope) shared += amt
+    }
+  }
+  return { program, exclusive, shared, total: exclusive + shared }
+}

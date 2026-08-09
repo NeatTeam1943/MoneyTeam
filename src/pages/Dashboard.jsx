@@ -11,8 +11,9 @@ import { useI18n } from '../lib/i18n'
 import { useLookups } from '../lib/useLookups'
 import { money, monthKey, typeColor, amountColor } from '../lib/format'
 import { useTeamScope } from '../context/TeamScopeContext'
-import { linesByTransaction, attributableAmount, touchesScope } from '../lib/teamScope'
+import { linesByTransaction, attributableAmount, touchesScope, exclusiveVsShared } from '../lib/teamScope'
 import ScopeNotice from '../components/ScopeNotice'
+import ShareTable from '../components/ShareTable'
 import { totalsOf, byMonthOf, overBudgetOf, topAncestorNameFactory, groupSum } from '../domain/ledger'
 import { GROUPING } from '../domain/constants'
 
@@ -89,6 +90,11 @@ export default function Dashboard() {
   const cashOnHand = useMemo(
     () => balances.reduce((s, b) => s + (Number(b.balance) || 0), 0), [balances])
 
+  // Under a single-program filter, how much of the expense is that program's
+  // alone and how much is shared. Null in the full view, where the question
+  // does not arise.
+  const split = useMemo(() => exclusiveVsShared(allRows, byTx, ts), [allRows, byTx, ts])
+
   const overBudget = useMemo(() => overBudgetOf({
     budgets, allRows, allLines, matchesTeam: ts.matches, allProgramsShown: ts.all,
   }), [allRows, allLines, budgets, ts])
@@ -125,6 +131,13 @@ export default function Dashboard() {
             nothing", which is not true. */}
         <Stat k={t('balanceOnHand')} v={money(cashOnHand)}
           c={cashOnHand < 0 ? 'var(--danger)' : 'var(--ok)'} />
+        {split && (
+          <>
+            <Stat k={t('exclusiveTo').replace('{p}', split.program.toUpperCase())}
+              v={money(split.exclusive)} c="var(--out)" />
+            <Stat k={t('sharedPart')} v={money(split.shared)} c="var(--text-dim)" />
+          </>
+        )}
         <Stat k={t('net')} v={totals.net === null ? '—' : money(totals.net)}
           c={totals.net === null ? 'var(--text-faint)' : (totals.net >= 0 ? 'var(--ok)' : 'var(--danger)')} />
         {!isParent && <Stat k={t('overBudget')} v={overBudget.hasBudget ? money(overBudget.over) : '—'} c={overBudget.over > 0 ? 'var(--danger)' : 'var(--ok)'} />}
@@ -168,10 +181,13 @@ export default function Dashboard() {
                   {byCategory.map((_, i) => <Cell key={i} fill={CATCOLORS[i % CATCOLORS.length]} />)}
                 </Pie>
                 <Tooltip contentStyle={tip} formatter={(v) => money(v)} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
               </PieChart>
             </ResponsiveContainer>
           </div>
+          {/* The legend is replaced by the table: a legend names the slices but
+              still cannot tell you what a 0.05% one is worth, and the table
+              does both. */}
+          <ShareTable rows={byCategory} colors={CATCOLORS} />
         </div>}
         <div className="panel panel-pad">
           <div className="section-title" style={{ marginTop: 0 }}>{t('bySource')}</div>

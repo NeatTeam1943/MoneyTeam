@@ -89,6 +89,9 @@ export default function ReceiptPreview({ path, paths, number, onClose }) {
 }
 
 function ReceiptPreviewInner({ path, number, onClose, position }) {
+  // Coarse pointer = phone or tablet, where inline PDF is refused outright.
+  const isTouch = typeof window !== 'undefined'
+    && window.matchMedia?.('(hover: none) and (pointer: coarse)').matches
   const { t } = useI18n()
   const clean = normalisePath(path)
   const [url, setUrl] = useState(null)
@@ -263,10 +266,24 @@ function ReceiptPreviewInner({ path, number, onClose, position }) {
           <img src={url} alt="" onError={diagnose}
             style={{ maxWidth: '100%', maxHeight: '68vh', display: 'block', margin: '0 auto', borderRadius: 8 }} />
         )}
-        {url && !failed && kind === 'pdf' && (
+        {/* No mobile browser renders a PDF inside an <object>: Chrome on
+            Android and Safari on iOS both refuse, by design. Attempting it
+            anyway produced a blank box and then a diagnostics panel explaining
+            that the file is fine — a lot of alarming text for a platform limit
+            with a one-tap answer. On a phone, offer the tap instead. */}
+        {url && !failed && kind === 'pdf' && isTouch && (
+          <div className="empty-cta">
+            <p style={{ fontWeight: 700, marginTop: 0 }}>{t('pdfMobileTitle')}</p>
+            <p style={{ color: 'var(--text-dim)', fontSize: 13 }}>{t('pdfMobileBody')}</p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+              <a className="btn btn-primary" href={url} target="_blank" rel="noreferrer">{t('openInNewTab')} ↗</a>
+              <a className="btn" href={url} download={filename}>{t('download')}</a>
+            </div>
+          </div>
+        )}
+        {url && !failed && kind === 'pdf' && !isTouch && (
           <object data={url} type="application/pdf"
             style={{ width: '100%', height: '68vh', border: '1px solid var(--line)', borderRadius: 8 }}>
-            {/* iOS Safari refuses to render PDFs inline in an object/iframe */}
             {diagnostics}
           </object>
         )}

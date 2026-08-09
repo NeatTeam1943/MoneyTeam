@@ -167,7 +167,10 @@ export default function Simulation() {
       <div className="panel table-wrap">
         <table className="data">
           <thead><tr>
-            <th>{t('account')}</th><th>{t('current')}</th><th>{t('change')}</th><th>{t('projected')}</th>
+            <th>{t('account')}</th>
+            <th className="num">{t('current')}</th>
+            <th className="num">{t('change')}</th>
+            <th className="num">{t('projected')}</th>
           </tr></thead>
           <tbody>
             {projectedAccounts.map((a) => (
@@ -203,7 +206,12 @@ export default function Simulation() {
       <div className="panel table-wrap">
         <table className="data">
           <thead><tr>
-            <th>{t('budget')}</th><th>{t('spent')}</th><th>{t('planned')}</th><th>{t('projected')}</th><th>{t('remaining')}</th><th>%</th>
+            <th className="num">{t('budget')}</th>
+            <th className="num">{t('spent')}</th>
+            <th className="num">{t('planned')}</th>
+            <th className="num">{t('projected')}</th>
+            <th className="num">{t('remaining')}</th>
+            <th className="num">%</th>
           </tr></thead>
           <tbody>
             {projectedBudgets.map((b) => (
@@ -265,7 +273,10 @@ export default function Simulation() {
         <table className="data">
           <thead><tr>
             <th></th><th>{t('name')}</th><th>{t('teamScope')}</th><th>{t('category')}</th>
-            <th>{t('priority')}</th><th>{t('estPrice')}</th><th>{t('quantity')}</th><th>{t('total')}</th>
+            <th>{t('priority')}</th>
+            <th className="num">{t('unitPrice')}</th>
+            <th className="num">{t('unitCount')}</th>
+            <th className="num">{t('total')}</th>
             <th>{t('fundFrom')}</th>
           </tr></thead>
           <tbody>

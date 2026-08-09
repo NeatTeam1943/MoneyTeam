@@ -15,7 +15,8 @@ import { useTeamScope } from '../context/TeamScopeContext'
 import { TeamScopeBadge } from '../components/TeamScope'
 import DetailPanel from '../components/DetailPanel'
 import { filterRows, sortRows } from '../domain/shopping'
-import { BUYABLE_STATUSES, DEFAULT_SHOPPING_STATUSES } from '../domain/constants'
+import { splitByExclusivity } from '../lib/teamScope'
+import { BUYABLE_STATUSES, DEFAULT_SHOPPING_STATUSES, OPEN_STATUSES } from '../domain/constants'
 
 const STATUSES = ['pending_approval', 'approved', 'ordered', 'received', 'cancelled']
 // Axis labels and grid lines follow the theme too: #4c5570 on a dark panel is
@@ -30,6 +31,15 @@ const tip = {
   borderRadius: 8,
   fontSize: 13,
   color: 'var(--text)',
+}
+
+function Stat({ k, v, c }) {
+  return (
+    <div className="panel stat">
+      <div className="k">{k}</div>
+      <div className="v" style={{ color: c || 'var(--text)' }}>{v}</div>
+    </div>
+  )
 }
 
 export default function Shopping() {
@@ -259,8 +269,33 @@ export default function Shopping() {
     exportShopping(filtered, { seasonName: active?.name, scope: { all: ts.all, frc: ts.frc, ftc: ts.ftc } })
   }
 
+  // Outstanding requests on screen: the total, the split, and how many items.
+  const openTotals = useMemo(() => {
+    const open = enriched.filter((r) => OPEN_STATUSES.includes(r.status) && ts.matches(r.team_scope))
+    return {
+      total: open.reduce((s, r) => s + lineTotal(r), 0),
+      count: open.length,
+      split: splitByExclusivity(open, (r) => lineTotal(r), ts),
+    }
+  }, [enriched, ts])
+
   return (
     <div>
+      {/* The list had no totals at all — you could see the rows and the charts
+          but never what the outstanding requests came to. */}
+      {openTotals.total > 0 && (
+        <div className="stats" style={{ marginBottom: 18 }}>
+          <Stat k={t('requestedOpen')} v={money(openTotals.total)} />
+          {openTotals.split && (
+            <>
+              <Stat k={t('requestOnlyFor').replace('{p}', openTotals.split.program.toUpperCase())}
+                v={money(openTotals.split.exclusive)} />
+              <Stat k={t('requestShared')} v={money(openTotals.split.shared)} c="var(--text-dim)" />
+            </>
+          )}
+          <Stat k={t('itemsOpen')} v={String(openTotals.count)} c="var(--text-dim)" />
+        </div>
+      )}
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
         <div className="tabs" style={{ marginBottom: 0 }}>
           <button className={'tab' + (categoryGrouping === 'direct' ? ' active' : '')} onClick={() => setCategoryGrouping('direct')}>{t('directOnly')}</button>

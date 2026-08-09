@@ -12,8 +12,8 @@
 
 import { buildBudgetRows, groupSiblings } from '/tmp/A_budgets.mjs'
 import { buildOwnership } from '/tmp/A_budgetOwnership.mjs'
-import { totalsOf } from '/tmp/A_ledger.mjs'
-import { linesByTransaction, attributableAmount, touchesScope, spendByScope, exclusiveVsShared } from '/tmp/A_ts.mjs'
+import { totalsOf, overBudgetOf } from '/tmp/A_ledger.mjs'
+import { linesByTransaction, attributableAmount, touchesScope, spendByScope, exclusiveVsShared, splitByExclusivity } from '/tmp/A_ts.mjs'
 import { projectBudgets, newlyOver } from '/tmp/A_simulation.mjs'
 
 const f = (n) => Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -103,6 +103,19 @@ for (const [flabel, picked] of [['both', ['frc','ftc']], ['FRC only', ['frc']], 
   check('sum of top-level spent = ledger', top.reduce((s, r) => s + r.spent, 0),
         lines.reduce((s, l) => s + l.amount, 0))
 
+  // requested is split BY POT when a category carries several. Every pot on
+  // one category used to report the same figure — including an FTC pot with no
+  // FTC items — because the calculation ignored team_scope entirely.
+  if (by.Rf && by.Rt && by.Rb) {
+    const openIn = (cat, scope) => shopping
+      .filter((r) => OPEN.includes(r.status) && r.category_id === cat && (r.team_scope || 'both') === scope)
+      .reduce((s, r) => s + lt(r), 0)
+    check('ROBOT·FRC requested = its own items', by.Rf.requested, openIn('MOTORS', 'frc'))
+    check('ROBOT·FTC requested = its own items', by.Rt.requested, openIn('MOTORS', 'ftc'))
+    check('pots on one category do not all report the same',
+      (by.Rf.requested === by.Rt.requested && by.Rf.requested > 0) ? 0 : 1, 1)
+  }
+
   // requested: open items only, once, respecting the filter
   const wantReq = shopping.filter((r) => OPEN.includes(r.status) && ts.matches(r.team_scope))
                           .reduce((s, r) => s + lt(r), 0)
@@ -183,6 +196,70 @@ for (const [lbl, picked, wantEx, wantSh] of [
   const ledger = lines.reduce((s, l) => s + l.amount, 0)
   check('FRC total + FTC total - shared = ledger', a.total + b.total - a.shared, ledger)
   check('full view returns no split', exclusiveVsShared(tx, byTx, { frc: true, ftc: true, all: true }) === null ? 1 : 0, 1)
+}
+
+// The same split now serves budgets and wish-list items, not just expenses.
+// One definition, so the three cannot drift apart.
+{
+  {
+  console.log('\n=== overspend is per pot, and a 0 pot is a real ceiling ===')
+  const pOf = { ROBOT: null, TOOLS: null }
+  const run = (bs, ls) => overBudgetOf({
+    budgets: bs, allRows: [], allLines: ls,
+    matchesTeam: () => true, allProgramsShown: true, parentOf: pOf,
+  })
+  // Every pot set to 0 AFTER the expenses were entered — the case that showed 0
+  // while the team was tens of thousands over.
+  const zeroed = run(
+    [{ id: 'ALL', category_id: null, amount: 0, team_scope: 'both' },
+     { id: 'Rb', category_id: 'ROBOT', amount: 0, team_scope: 'both' }],
+    [{ budget_id: 'Rb', amount: 21592 }])
+  check('all pots at 0 with spend -> that spend is over', zeroed.over, 21592)
+  check('and the card is shown', zeroed.hasBudget ? 1 : 0, 1)
+
+  // A funded pot that is over, while the overall pot still has room. The room
+  // is real but cannot buy robot parts, so the overspend still counts.
+  const over = run(
+    [{ id: 'ALL', category_id: null, amount: 100000, team_scope: 'both' },
+     { id: 'Rb', category_id: 'ROBOT', amount: 20000, team_scope: 'both' },
+     { id: 'Tb', category_id: 'TOOLS', amount: 5000, team_scope: 'both' }],
+    [{ budget_id: 'Rb', amount: 21592 }, { budget_id: 'Tb', amount: 3500 }])
+  check('one pot over, another with room', over.over, 1592)
+
+  const clean = run([{ id: 'Rb', category_id: 'ROBOT', amount: 30000, team_scope: 'both' }],
+                    [{ budget_id: 'Rb', amount: 21592 }])
+  check('within budget -> nothing over', clean.over, 0)
+
+  const untouched = run([{ id: 'Rb', category_id: 'ROBOT', amount: 0, team_scope: 'both' }], [])
+  check('no budget and no spend -> card hidden', untouched.hasBudget ? 1 : 0, 0)
+}
+
+console.log('\n=== the split applies to budgets and requests too ===')
+  const pots = [
+    { team_scope: 'frc',  amount: 25000 },
+    { team_scope: 'ftc',  amount: 10000 },
+    { team_scope: 'both', amount: 40000 },
+  ]
+  const wish = [
+    { team_scope: 'frc',  v: 470 },
+    { team_scope: 'both', v: 314 },
+  ]
+  for (const [lbl, ts0, wantEx, wantSh] of [
+    ['FRC', { frc: true, ftc: false }, 25000, 40000],
+    ['FTC', { frc: false, ftc: true }, 10000, 40000],
+  ]) {
+    const sp = splitByExclusivity(pots, (r) => r.amount, ts0)
+    check(`budgets ${lbl}: exclusive`, sp.exclusive, wantEx)
+    check(`budgets ${lbl}: shared`,    sp.shared,    wantSh)
+  }
+  const rq = splitByExclusivity(wish, (r) => r.v, { frc: true, ftc: false })
+  check('requests FRC: exclusive', rq.exclusive, 470)
+  check('requests FRC: shared',    rq.shared,    314)
+  const rt = splitByExclusivity(wish, (r) => r.v, { frc: false, ftc: true })
+  check('requests FTC: exclusive', rt.exclusive, 0)
+  check('requests FTC: shared',    rt.shared,    314)
+  check('full view returns no split',
+    splitByExclusivity(pots, (r) => r.amount, { frc: true, ftc: true }) === null ? 1 : 0, 1)
 }
 
 console.log('\n=== by-program split of one mixed receipt ===')

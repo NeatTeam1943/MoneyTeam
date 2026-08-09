@@ -10,6 +10,7 @@ import { useLookups } from '../lib/useLookups'
 import { money, lineTotal } from '../lib/format'
 import { buildBudgetRows, groupSiblings } from '../domain/budgets'
 import { buildOwnership } from '../domain/budgetOwnership'
+import { splitByExclusivity } from '../lib/teamScope'
 import { roundMoney } from '../domain/money'
 import { GROUPING, SCOPE, OPEN_STATUSES } from '../domain/constants'
 import { emptyCalcRow, rowTotal, calcTotal, cleanCalc, calcStatus } from '../domain/budgetCalc'
@@ -163,7 +164,16 @@ export default function Budgets() {
         .filter((r) => OPEN_STATUSES.includes(r.status) && ts.matches(r.team_scope))
         .reduce((s, r) => s + lineTotal(r), 0))
 
-    return { planned, spent, requested, remaining: roundMoney(planned - spent) }
+    // Under one program: how much of the ceiling and of the outstanding
+    // requests is that program's alone, and how much is shared. Only the
+    // exclusive part can be changed without affecting the other programme.
+    const plannedSplit = splitByExclusivity(top, (r) => r.amount, ts)
+    const requestedSplit = splitByExclusivity(
+      shopping.filter((r) => OPEN_STATUSES.includes(r.status) && ts.matches(r.team_scope)),
+      (r) => lineTotal(r), ts)
+
+    return { planned, spent, requested, remaining: roundMoney(planned - spent),
+      plannedSplit, requestedSplit }
   }, [budgets, shopping, lk, ts])   // eslint-disable-line react-hooks/exhaustive-deps
 
   const chartRows = useMemo(() => buildRows(categoryGrouping),
@@ -189,6 +199,13 @@ export default function Budgets() {
             c={totals.remaining < 0 ? 'var(--danger)' : 'var(--ok)'} />
           {totals.requested > 0 && (
             <Stat k={t('requested')} v={money(totals.requested)} c="var(--text-dim)" />
+          )}
+          {totals.plannedSplit && (
+            <>
+              <Stat k={t('budgetOnlyFor').replace('{p}', totals.plannedSplit.program.toUpperCase())}
+                v={money(totals.plannedSplit.exclusive)} />
+              <Stat k={t('budgetShared')} v={money(totals.plannedSplit.shared)} c="var(--text-dim)" />
+            </>
           )}
         </div>
       )}

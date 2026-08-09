@@ -76,22 +76,47 @@ export function exclusiveVsShared(transactions, byTx, ts) {
   const program = ts.frc && !ts.ftc ? 'frc' : (ts.ftc && !ts.frc ? 'ftc' : null)
   if (!program) return null
 
-  let exclusive = 0
-  let shared = 0
+  // Expenses only: income is shared and is never attributed to one programme.
+  // A split purchase is read LINE BY LINE — its header is 'both' for a mixed
+  // basket, which says nothing about who the money was for.
+  const rows = []
   for (const tx of transactions) {
     if (tx.type !== 'expense') continue
     const own = byTx?.[tx.id]
-    if (!own || !own.length) {
-      // No lines: the header is all there is to go on.
-      if (tx.team_scope === program) exclusive += Number(tx.amount) || 0
-      else if (tx.team_scope === 'both') shared += Number(tx.amount) || 0
-      continue
-    }
-    for (const l of own) {
-      const amt = Number(l.amount) || 0
-      if (l.team_scope === program) exclusive += amt
-      else if (l.team_scope === 'both' || !l.team_scope) shared += amt
-    }
+    if (!own || !own.length) rows.push({ team_scope: tx.team_scope, amount: tx.amount })
+    else for (const l of own) rows.push({ team_scope: l.team_scope, amount: l.amount })
+  }
+  return splitByExclusivity(rows, (r) => r.amount, ts)
+}
+
+/**
+ * The same exclusive/shared split for any list of rows that carry a
+ * `team_scope`, not just expense transactions.
+ *
+ * Budgets and shopping items need the same breakdown as spending — "FTC's
+ * requests are 5,500" hides whether that is FTC's own or a shared basket the
+ * whole team benefits from — and only the exclusive part can be cut without
+ * affecting the other programme.
+ *
+ * Kept generic so budgets, wish-list items and expenses cannot drift into
+ * three slightly different definitions of the same word.
+ *
+ * @param rows    anything with team_scope
+ * @param amount  how to read the value off a row
+ * @param ts      the program checklist
+ * @returns null in the full view, where the question does not arise
+ */
+export function splitByExclusivity(rows, amountOf, ts) {
+  const program = ts.frc && !ts.ftc ? 'frc' : (ts.ftc && !ts.frc ? 'ftc' : null)
+  if (!program) return null
+
+  let exclusive = 0
+  let shared = 0
+  for (const r of rows || []) {
+    const scope = r.team_scope || 'both'
+    const amt = Number(amountOf(r)) || 0
+    if (scope === program) exclusive += amt
+    else if (scope === 'both') shared += amt
   }
   return { program, exclusive, shared, total: exclusive + shared }
 }

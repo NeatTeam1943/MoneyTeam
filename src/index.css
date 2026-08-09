@@ -221,6 +221,13 @@ table.data td { padding: 11px 12px; border-block-end: 1px solid var(--line); ver
 table.data tr:hover td { background: var(--panel-2); }
 .num { font-family: var(--font-mono); text-align: end; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
+/* A numeric column's HEADER has to sit over its numbers.
+   .num aligns the cell to `end`, but the <th> kept the table's default
+   alignment, so on a wide table the label ended up at one edge of the column
+   and the figure at the other — "כיום" on the right with -9,726.50 far off to
+   the left. Marking the header .num too puts them on the same edge. */
+table.data th.num { text-align: end; }
+
 /* ---------- Toolbar / filters ---------- */
 .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 16px; }
 .toolbar input, .toolbar select { width: auto; min-width: 6.5rem; }
@@ -655,5 +662,9 @@ table.data td.desc-cell { min-width: 12rem; }
 
 /* Figures beside a pie. Compact, because it sits under a chart rather than
    being the main event. */
-.share-table { font-size: 12px; margin-top: 8px; }
+.share-table { font-size: 12px; margin-top: 8px; width: 100%; table-layout: fixed; }
 .share-table td { padding: 4px 6px; }
+/* The name column takes what is left and wraps; the figures never do. A long
+   category name was pushing the amount and percentage off the panel. */
+.share-table td:nth-child(2) { overflow-wrap: anywhere; }
+.share-table td.num { white-space: nowrap; width: 5.5rem; }

@@ -90,15 +90,50 @@ const refByAccount = (rows) => {
 }
 const refTopExpenses = (rows) =>
   rows.filter((r) => r.type === 'expense').sort((a, b) => Number(b.amount) - Number(a.amount)).slice(0, TOP)
+// UPDATED DELIBERATELY. Overspend used to be one comparison against the overall
+// pot, ignoring every category pot. That returned 0 whenever the overall pot was
+// 0 — a ceiling of nothing read as "no budget" — and hid a real overspend
+// whenever the category pots summed to more than the overall one. It now adds up
+// what each leaf pot is over. The reference mirrors that, so the check pins the
+// corrected behaviour rather than the bug.
 const refOverBudget = (ts) => {
-  const inScopeBudgets = D.budgets.filter((b) => ts.matches(b.team_scope))
-  const overall = inScopeBudgets.find((b) => !b.category_id)
-  const total = overall ? Number(overall.amount) : inScopeBudgets.reduce((s, b) => s + Number(b.amount), 0)
-  const budgetIds = new Set(inScopeBudgets.map((b) => b.id))
-  const spend = (overall && ts.all)
-    ? D.tx.reduce((s, r) => s + (r.type === 'expense' ? Number(r.amount) : 0), 0)
-    : D.lines.reduce((s, l) => s + (budgetIds.has(l.budget_id) ? Number(l.amount) : 0), 0)
-  return { hasBudget: total > 0, over: Math.max(0, spend - total) }
+  const inScope = D.budgets.filter((b) => ts.matches(b.team_scope))
+  const parentOfCat = Object.fromEntries(D.cats.map((c) => [c.id, c.parent_id]))
+
+  // same ownership walk the implementation uses
+  const byCat = {}
+  for (const b of inScope) if (b.category_id) (byCat[b.category_id] = byCat[b.category_id] || []).push(b)
+  const overallPots = inScope.filter((b) => !b.category_id)
+  const parentOfBudget = {}
+  for (const b of inScope) {
+    if (!b.category_id) { parentOfBudget[b.id] = null; continue }
+    let cur = parentOfCat[b.category_id]; let anc = null
+    while (cur) { if (byCat[cur]?.length) { anc = cur; break } cur = parentOfCat[cur] }
+    const cands = (anc ? byCat[anc] : overallPots).filter((x) => x.id !== b.id)
+    parentOfBudget[b.id] = (cands.find((x) => x.team_scope === b.team_scope)
+      || cands.find((x) => x.team_scope === 'both') || null)?.id ?? null
+  }
+  const ownedOf = (id) => {
+    const children = {}
+    for (const [k, v] of Object.entries(parentOfBudget)) if (v) (children[v] = children[v] || []).push(k)
+    const out = new Set([id]); const st = [id]
+    while (st.length) { const c = st.pop(); for (const k of children[c] || []) if (!out.has(k)) { out.add(k); st.push(k) } }
+    return out
+  }
+
+  const spentPer = {}
+  for (const l of D.lines) if (l.budget_id) spentPer[l.budget_id] = (spentPer[l.budget_id] || 0) + Number(l.amount)
+
+  let over = 0; let hasBudget = false
+  for (const b of inScope) {
+    const amount = Number(b.amount)
+    const spent = [...ownedOf(b.id)].reduce((s, id) => s + (spentPer[id] || 0), 0)
+    if (amount > 0 || spent > 0) hasBudget = true
+    const isLeaf = !inScope.some((x) => parentOfBudget[x.id] === b.id)
+    if (isLeaf && spent > amount) over += spent - amount
+  }
+  const R = (n) => (Math.round((Number(n) || 0) * 100) / 100) || 0
+  return { hasBudget, over: R(over) }
 }
 const refTopAncestor = () => {
   const byId = Object.fromEntries(D.cats.map((c) => [c.id, c]))
@@ -141,6 +176,7 @@ for (const [name, picked] of [['both', ['frc', 'ftc']], ['FRC only', ['frc']], [
   eq(`overBudget/${name}`, refOverBudget(ts), overBudgetOf({
     budgets: D.budgets, allRows: D.tx, allLines: D.lines,
     matchesTeam: (s) => ts.matches(s), allProgramsShown: ts.all,
+    parentOf: Object.fromEntries(D.cats.map((c) => [c.id, c.parent_id])),
   }))
 
   // Dashboard's by-category uses the grouping toggle on top of the same roll-up

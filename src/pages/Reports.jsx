@@ -236,9 +236,9 @@ export default function Reports() {
           if (!sp) return null
           return (
             <>
-              <Stat k={t('exclusiveTo').replace('{p}', sp.program.toUpperCase())}
+              <Stat k={t('expenseOnlyFor').replace('{p}', sp.program.toUpperCase())}
                 v={money(sp.exclusive)} c="var(--out)" />
-              <Stat k={t('sharedPart')} v={money(sp.shared)} c="var(--text-dim)" />
+              <Stat k={t('expenseShared')} v={money(sp.shared)} c="var(--text-dim)" />
             </>
           )
         })()}
@@ -280,7 +280,7 @@ export default function Reports() {
           </Chart>
 
           <div className="charts" style={{ marginTop: 16 }}>
-            <Chart title={t('byVendor')} note={t('noteByVendor')}>
+            <Chart title={t('byVendor')} note={t('noteByVendor')} chart={
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={byVendor} layout="vertical" margin={{ left: 8, right: 16 }}>
                     <XAxis type="number" tick={axis} />
@@ -291,8 +291,9 @@ export default function Reports() {
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
+            }>
             </Chart>
-            <Chart title={t('byScope')} note={t('noteByScope')}>
+            <Chart title={t('byScope')} note={t('noteByScope')} chart={
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie data={byScope} dataKey="value" nameKey="name" outerRadius={95} innerRadius={50}>
@@ -302,6 +303,7 @@ export default function Reports() {
                     <Legend wrapperStyle={{ fontSize: 12 }} />
                   </PieChart>
                 </ResponsiveContainer>
+            }>
                 <ShareTable rows={byScope} colors={byScope.map((d) => SCOPE_FILL[d.key])} />
             </Chart>
           </div>
@@ -310,7 +312,7 @@ export default function Reports() {
           {/* The same views the other pages show, so a report is the whole
               picture rather than a subset someone has to supplement. */}
           <div className="charts" style={{ marginTop: 16 }}>
-            <Chart title={t('byCategory')} note={t('noteByCategoryChart')}>
+            <Chart title={t('byCategory')} note={t('noteByCategoryChart')} chart={
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie data={byCategory} dataKey="value" nameKey="name" outerRadius={90} innerRadius={48}>
@@ -319,10 +321,11 @@ export default function Reports() {
                   <Tooltip contentStyle={tip} formatter={(v) => money(v)} />
                 </PieChart>
               </ResponsiveContainer>
+            }>
               <ShareTable rows={byCategory} colors={CATFILL} />
             </Chart>
 
-            <Chart title={t('bySource')} note={t('noteBySourceChart')}>
+            <Chart title={t('bySource')} note={t('noteBySourceChart')} chart={
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie data={bySource} dataKey="value" nameKey="name" outerRadius={90} innerRadius={48}>
@@ -331,6 +334,7 @@ export default function Reports() {
                   <Tooltip contentStyle={tip} formatter={(v) => money(v)} />
                 </PieChart>
               </ResponsiveContainer>
+            }>
               <ShareTable rows={bySource} colors={CATFILL.slice(3).concat(CATFILL.slice(0, 3))} />
                           </Chart>
           </div>
@@ -394,12 +398,19 @@ export default function Reports() {
 // A chart with its title and a one-line note. The note matters: a reader who
 // has to work out what "מאזן מצטבר" counts will guess, and guessing at a
 // finance figure is how the wrong number gets quoted in a meeting.
-function Chart({ title, note, height, children }) {
+// `chart` is the graphic and goes in the fixed-height box; anything passed as
+// `children` sits BELOW it and takes the room it needs.
+//
+// Previously everything went inside the box, so a table passed alongside the
+// chart was rendered inside a container with a fixed height and simply
+// overflowed onto whatever was beneath it.
+function Chart({ title, note, height, chart, children }) {
   return (
     <div className="panel panel-pad">
       <div className="section-title" style={{ marginTop: 0, marginBottom: 2 }}>{title}</div>
       <p style={{ color: 'var(--text-faint)', fontSize: 12, margin: '0 0 8px' }}>{note}</p>
-      <div className={height || 'chart-box'} style={{ direction: 'ltr' }}>{children}</div>
+      <div className={height || 'chart-box'} style={{ direction: 'ltr' }}>{chart ?? children}</div>
+      {chart && children}
     </div>
   )
 }

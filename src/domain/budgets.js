@@ -39,10 +39,25 @@ export function spentInScopeOn(budget, expenses, inScope, budgetCategory, matche
     s + (inScope(budgetCategory[l.budget_id]) && matchesTeam(l.team_scope) ? toNumber(l.amount) : 0), 0)
 }
 
-/** Outstanding wish-list value against a budget. */
-export function requestedOn(shopping, inScope) {
-  return shopping.reduce((s, r) =>
-    OPEN_REQUEST_STATUSES.includes(r.status) && inScope(r.category_id) ? s + lineTotalOf(r) : s, 0)
+/** Outstanding wish-list value against a budget.
+ *
+ *  `matchesPot` decides whether an item belongs to THIS pot rather than a
+ *  sibling on the same category. Without it every pot on a category reported
+ *  the same figure: with two FRC items and one shared, all three of רובוט·FRC,
+ *  רובוט·FTC and רובוט·shared showed 784 — including the FTC pot, which has no
+ *  FTC items at all.
+ *
+ *  The rule is the one already used for spend: an item belongs to the pot of
+ *  its own program, and a shared item to the shared pot. Passing no
+ *  `matchesPot` keeps the old category-only behaviour for callers that have
+ *  only one pot per category. */
+export function requestedOn(shopping, inScope, matchesPot) {
+  return shopping.reduce((s, r) => {
+    if (!OPEN_REQUEST_STATUSES.includes(r.status)) return s
+    if (!inScope(r.category_id)) return s
+    if (matchesPot && !matchesPot(r)) return s
+    return s + lineTotalOf(r)
+  }, 0)
 }
 
 /** True when the child budgets under this one already exceed its own amount. */
@@ -167,6 +182,13 @@ export function buildBudgetRows(grouping, deps) {
     return resolveBudget(l.category_id, l.team_scope, ownershipSource, parentOf).budget?.id ?? null
   }
 
+  // How many pots sit on each category, so a single-pot category keeps
+  // absorbing everything and a split one divides by program.
+  const potsOnCategory = {}
+  for (const b of budgets) {
+    if (b.category_id) potsOnCategory[b.category_id] = (potsOnCategory[b.category_id] || 0) + 1
+  }
+
   return budgets.map((b) => {
     const descendants = b.category_id ? descendantsOf(b.category_id) : null
     const inScope = categoryPredicate(b, grouping, descendants)
@@ -205,7 +227,14 @@ export function buildBudgetRows(grouping, deps) {
       // "0.00" in green.
       spent: roundMoney(spent),
       spentInScope: roundMoney(spentInScope),
-      requested: roundMoney(requestedOn(shopping, inScope)),
+      // An item counts for the pot of its own program; a shared item for the
+      // shared pot. Only applied when the category actually carries more than
+      // one pot — otherwise a lone shared pot would report nothing for an FRC
+      // item that has nowhere else to go.
+      requested: roundMoney(requestedOn(shopping, inScope,
+        potsOnCategory[b.category_id] > 1
+          ? (r) => (r.team_scope || 'both') === b.team_scope
+          : null)),
       remaining: roundMoney(amount - spent),
       pct: amount > 0 ? Math.min(PCT_CEILING, roundMoney((spent / amount) * 100)) : 0,
       childOver: childrenOverspend(b, ownershipSource, descendants, ownership),

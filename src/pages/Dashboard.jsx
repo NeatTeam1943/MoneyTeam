@@ -97,7 +97,9 @@ export default function Dashboard() {
 
   const overBudget = useMemo(() => overBudgetOf({
     budgets, allRows, allLines, matchesTeam: ts.matches, allProgramsShown: ts.all,
-  }), [allRows, allLines, budgets, ts])
+    // Needed so a parent pot does not re-count its children's overspend.
+    parentOf: Object.fromEntries(categories.map((c) => [c.id, c.parent_id])),
+  }), [allRows, allLines, budgets, ts, categories])
 
   const byMonth = useMemo(() => byMonthOf(rows, monthKey), [rows])
 
@@ -133,9 +135,9 @@ export default function Dashboard() {
           c={cashOnHand < 0 ? 'var(--danger)' : 'var(--ok)'} />
         {split && (
           <>
-            <Stat k={t('exclusiveTo').replace('{p}', split.program.toUpperCase())}
+            <Stat k={t('expenseOnlyFor').replace('{p}', split.program.toUpperCase())}
               v={money(split.exclusive)} c="var(--out)" />
-            <Stat k={t('sharedPart')} v={money(split.shared)} c="var(--text-dim)" />
+            <Stat k={t('expenseShared')} v={money(split.shared)} c="var(--text-dim)" />
           </>
         )}
         <Stat k={t('net')} v={totals.net === null ? '—' : money(totals.net)}

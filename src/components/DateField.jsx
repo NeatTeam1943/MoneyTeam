@@ -1,31 +1,51 @@
+import { useRef } from 'react'
 import { useI18n } from '../lib/i18n'
 import { fmtDate } from '../lib/format'
 
 /**
- * A date input with the chosen date echoed underneath in Hebrew order.
+ * A date field that reads dd.mm.yyyy in Hebrew.
  *
- * The browser renders <input type="date"> using the OS locale, not the page's,
- * so a Hebrew-first app still shows mm/dd/yyyy on many machines. That cannot be
- * overridden — there is no CSS or attribute for it, and replacing the control
- * with three text boxes would lose the native picker, keyboard handling and
- * mobile behaviour, which is a bad trade for a formatting complaint.
+ * <input type="date"> draws its own text from the OS locale. No attribute, CSS
+ * property or JS API changes that — the value is always yyyy-mm-dd internally
+ * and the DISPLAY belongs to the browser, which is why Chrome shows 08/06/2026
+ * for the 6th of August.
  *
- * What matters is that nobody mis-reads which number is the day. 07/26/2026 is
- * unambiguous by luck; 07/08/2026 is not. Echoing the value as 08.07.2026
- * removes the doubt without giving up the native control.
+ * An earlier attempt printed the correct date underneath. That was worse: the
+ * screen then showed 08/06/2026 and 06.08.2026 together, two different-looking
+ * dates for one day, and the reader has to work out which to believe.
+ *
+ * So the native text is hidden and ours is drawn in its place. The input is
+ * still a real date input, stacked invisibly on top and filling the box, so
+ * tapping anywhere opens the system picker and keyboard entry, min/max and form
+ * behaviour all keep working. Only the glyphs are ours.
+ *
+ * In English the native format already matches expectations, so the control is
+ * left completely alone.
  */
-export default function DateField({ value, onChange, title, className, style }) {
-  const { lang } = useI18n()
+export default function DateField({ value, onChange, title, className, style, ...rest }) {
+  const { t, lang } = useI18n()
+  const ref = useRef(null)
+
+  if (lang !== 'he') {
+    return (
+      <input ref={ref} type="date" value={value || ''} onChange={onChange}
+        title={title} className={className} style={style} {...rest} />
+    )
+  }
+
   return (
-    <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 2, ...style }}>
-      <input type="date" value={value || ''} onChange={onChange} title={title} className={className} />
-      {/* Only in Hebrew: in English the native format already matches what the
-          reader expects, and a second copy would just be noise. */}
-      {value && lang === 'he' && (
-        <small className="mono" style={{ color: 'var(--text-faint)', fontSize: 11 }}>
-          {fmtDate(value)}
-        </small>
-      )}
+    <span className={'date-he ' + (className || '')} style={style} title={title}>
+      <span className="date-he-text" aria-hidden="true">
+        {value ? fmtDate(value) : <span className="date-he-empty">{t('selectDate')}</span>}
+      </span>
+      <input
+        ref={ref}
+        type="date"
+        value={value || ''}
+        onChange={onChange}
+        aria-label={title || t('date')}
+        {...rest}
+      />
     </span>
   )
 }

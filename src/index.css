@@ -621,3 +621,34 @@ html, body { max-width: 100%; overflow-x: hidden; }
    rather than being squeezed to the width of the numbers beside it. */
 table.data td.desc-cell { min-width: 12rem; }
 @media (max-width: 900px) { table.data td.desc-cell { min-width: 14rem; } }
+
+/* Hebrew date field: our dd.mm.yyyy on top, the native control underneath.
+   The input keeps its size and stays fully interactive — tapping it opens the
+   system picker — but its own text and indicator are hidden, because the
+   browser renders those from the OS locale and nothing can change that. */
+.date-he { position: relative; display: inline-block; width: 100%; }
+.date-he > input[type="date"] {
+  position: relative; z-index: 1; width: 100%;
+  color: transparent;                 /* hide the browser's own mm/dd/yyyy */
+  -webkit-text-fill-color: transparent;
+  background: transparent;            /* let our text show through */
+  /* The generic input rule still gives this a border; without dropping it the
+     field would render two nested outlines. */
+  border-color: transparent;
+}
+.date-he > input[type="date"]::-webkit-datetime-edit { color: transparent; }
+.date-he > input[type="date"]::-webkit-calendar-picker-indicator { opacity: .55; }
+.date-he-text {
+  position: absolute; inset: 0; z-index: 0;
+  display: flex; align-items: center;
+  padding-inline: 11px;
+  font-family: var(--font-mono); font-size: 14px; color: var(--text);
+  background: var(--field);
+  border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+  pointer-events: none;               /* every click reaches the real input */
+}
+.date-he-empty { color: var(--text-faint); }
+/* Focus has to move to the overlay, since the input's own border is gone. */
+.date-he:focus-within .date-he-text {
+  border-color: var(--blue); box-shadow: 0 0 0 3px var(--focus-ring);
+}

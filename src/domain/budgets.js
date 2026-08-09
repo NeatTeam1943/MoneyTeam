@@ -110,6 +110,23 @@ export function groupSiblings(rows) {
       requested: roundMoney(sum((x) => x.requested)),
       remaining: roundMoney(amount - spent),
       pct: amount > 0 ? Math.min(999, roundMoney((spent / amount) * 100)) : 0,
+      // The group row is built from `...r`, i.e. the FIRST sibling — so its
+      // `calc` was one program's working shown against the COMBINED amount.
+      // With FRC on 17,500 and FTC on 6,600 the panel listed only the FRC rows
+      // and then called the 24,100 total a mismatch.
+      //
+      // Every sibling's working, each labelled with its program, and the
+      // comparison is against the combined total. A part with no working of
+      // its own contributes nothing rather than being counted as zero.
+      calc: family.flatMap((x) => (x.calc || []).map((c) => ({
+        ...c,
+        program: x.team_scope,
+      }))),
+      // Which parts actually have working, so the panel can say when a total
+      // is short because a sibling was never filled in — rather than implying
+      // the arithmetic is wrong.
+      calcParts: family.filter((x) => (x.calc || []).length).length,
+      partCount: family.length,
       parts: family.map((x) => ({ ...x, parts: null })),
     })
   }

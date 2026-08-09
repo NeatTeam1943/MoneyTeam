@@ -70,7 +70,25 @@ export const kindOf = (path, contentType) => {
   return 'other'
 }
 
-export default function ReceiptPreview({ path, number, onClose }) {
+/**
+ * @param {string}   path   the receipt to show
+ * @param {string[]} paths  every receipt on the transaction, so a purchase with
+ *                          an invoice AND a bank fee can be stepped through
+ *                          without closing and reopening the dialog
+ */
+export default function ReceiptPreview({ path, paths, number, onClose }) {
+  // The set to page through: whatever was handed in, falling back to the single
+  // path so existing callers keep working unchanged.
+  const all = (paths?.length ? paths : (path ? [path] : []))
+  const [idx, setIdx] = useState(() => Math.max(0, all.indexOf(path)))
+  const current = all[idx] || path
+  return <ReceiptPreviewInner
+    path={current} number={number} onClose={onClose}
+    position={all.length > 1 ? { i: idx, n: all.length, go: setIdx } : null}
+  />
+}
+
+function ReceiptPreviewInner({ path, number, onClose, position }) {
   const { t } = useI18n()
   const clean = normalisePath(path)
   const [url, setUrl] = useState(null)
@@ -186,6 +204,17 @@ export default function ReceiptPreview({ path, number, onClose }) {
         <p style={{ color: 'var(--text-dim)', fontSize: 13 }}>
           {t('largeImageHint').replace('{v}', (byteSize / (1024 * 1024)).toFixed(1))}
         </p>
+      )}
+      {position && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+          <button className="btn btn-ghost btn-sm" disabled={position.i === 0}
+            onClick={() => position.go(position.i - 1)}>‹</button>
+          <span className="mono" style={{ fontSize: 12, color: 'var(--text-dim)' }}>
+            {position.i + 1} / {position.n}
+          </span>
+          <button className="btn btn-ghost btn-sm" disabled={position.i === position.n - 1}
+            onClick={() => position.go(position.i + 1)}>›</button>
+        </div>
       )}
       <ul className="mono" style={{ fontSize: 12, color: 'var(--text-faint)', paddingInlineStart: 18, lineHeight: 1.9 }}>
         <li>{t('previewStatus')}: {diag ? (diag.status || 'network error') : '—'}</li>

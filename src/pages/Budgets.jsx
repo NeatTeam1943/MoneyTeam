@@ -9,6 +9,8 @@ import { useToast } from '../lib/toast'
 import { useLookups } from '../lib/useLookups'
 import { money } from '../lib/format'
 import { buildBudgetRows, groupSiblings } from '../domain/budgets'
+import { buildOwnership } from '../domain/budgetOwnership'
+import { roundMoney } from '../domain/money'
 import { GROUPING, SCOPE } from '../domain/constants'
 import { emptyCalcRow, rowTotal, calcTotal, cleanCalc, calcStatus } from '../domain/budgetCalc'
 import Modal from '../components/Modal'
@@ -28,6 +30,15 @@ const tip = {
   borderRadius: 8,
   fontSize: 13,
   color: 'var(--text)',
+}
+
+function Stat({ k, v, c }) {
+  return (
+    <div className="panel stat">
+      <div className="k">{k}</div>
+      <div className="v" style={{ color: c || 'var(--text)' }}>{v}</div>
+    </div>
+  )
 }
 
 export default function Budgets() {
@@ -122,6 +133,22 @@ export default function Budgets() {
   const rows = useMemo(() => groupSiblings(buildRows(GROUPING.PARENT)),
     [scopedBudgets, scopedExpenses, scopedShopping, budgetCat, lk, t])          // eslint-disable-line react-hooks/exhaustive-deps
   // Chart: follows the toggle.
+  // Season totals across every budget on screen.
+  //
+  // Summing the CARDS would double-count: a grouped row already contains its
+  // parts, and a parent budget already contains the children that roll into
+  // it. Only budgets with no parent in the ownership tree are top-level, and
+  // those are exactly the ones whose amounts add up to the season.
+  const totals = useMemo(() => {
+    const flat = buildRows(GROUPING.PARENT)
+    const ownership = buildOwnership(budgets, lk.parentOf)
+    const top = flat.filter((b) => !ownership[b.id])
+    const sum = (pick) => roundMoney(top.reduce((s, r) => s + pick(r), 0))
+    const planned = sum((r) => r.amount)
+    const spent = sum((r) => r.spent)
+    return { planned, spent, requested: sum((r) => r.requested), remaining: roundMoney(planned - spent) }
+  }, [budgets, lk, ts])   // eslint-disable-line react-hooks/exhaustive-deps
+
   const chartRows = useMemo(() => buildRows(categoryGrouping),
     [scopedBudgets, scopedExpenses, scopedShopping, budgetCat, lk, t, categoryGrouping])   // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -137,6 +164,17 @@ export default function Budgets() {
 
   return (
     <div>
+      {rows.length > 0 && (
+        <div className="stats" style={{ marginBottom: 18 }}>
+          <Stat k={t('totalPlanned')} v={money(totals.planned)} />
+          <Stat k={t('spent')} v={money(totals.spent)} c="var(--out)" />
+          <Stat k={t('remaining')} v={money(totals.remaining)}
+            c={totals.remaining < 0 ? 'var(--danger)' : 'var(--ok)'} />
+          {totals.requested > 0 && (
+            <Stat k={t('requested')} v={money(totals.requested)} c="var(--text-dim)" />
+          )}
+        </div>
+      )}
       {rows.length > 0 && (
         <div className="panel panel-pad" style={{ marginBottom: 18 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
@@ -199,13 +237,33 @@ export default function Budgets() {
                   <details style={{ marginTop: 6 }}>
                     <summary style={{ fontSize: 12, color: 'var(--text-faint)', cursor: 'pointer' }}>
                       {t('budgetCalc')}
-                      {!st.matches && <b style={{ color: 'var(--orange)' }}> · {t('calcDiffers')}</b>}
+                      {!st.matches && (
+                        <b style={{ color: 'var(--orange)' }}> · {
+                          // A grouped row where only some siblings have working
+                          // is not a mismatch — it is an incomplete picture, and
+                          // saying "the amount differs" sends someone hunting
+                          // for an arithmetic error that is not there.
+                          r.isGroup && r.calcParts < r.partCount
+                            ? t('calcPartial').replace('{a}', r.calcParts).replace('{b}', r.partCount)
+                            : t('calcDiffers')
+                        }</b>
+                      )}
                     </summary>
                     <table className="data" style={{ marginTop: 4 }}>
                       <tbody>
                         {r.calc.map((c, i) => (
                           <tr key={i}>
-                            <td style={{ fontSize: 12 }}>{c.label || '—'}</td>
+                            <td style={{ fontSize: 12 }}>
+                              {/* On a grouped row the working comes from several
+                                  budgets, so each line says which program it
+                                  belongs to. */}
+                              {c.program && c.program !== 'both' && (
+                                <b style={{ color: c.program === 'frc' ? 'var(--frc)' : 'var(--ftc)', marginInlineEnd: 5 }}>
+                                  {c.program.toUpperCase()}
+                                </b>
+                              )}
+                              {c.label || '—'}
+                            </td>
                             <td className="num mono" style={{ fontSize: 12 }}>{c.qty} × {money(c.unit)}</td>
                             <td className="num mono" style={{ fontSize: 12 }}>{money(rowTotal(c))}</td>
                           </tr>

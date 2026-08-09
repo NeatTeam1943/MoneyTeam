@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import DateField from '../components/DateField'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend,
   LineChart, Line, PieChart, Pie, Cell, ReferenceLine } from 'recharts'
 import { supabase, withTimeout } from '../lib/supabase'
@@ -218,8 +219,8 @@ export default function Reports() {
             <button key={p} className={'tab' + (preset === p ? ' active' : '')} onClick={() => setPreset(p)}>{t('period_' + p)}</button>
           ))}
         </div>
-        <input type="date" value={from} onChange={(e) => { setPreset('custom'); setFrom(e.target.value) }} title={t('from')} />
-        <input type="date" value={to} onChange={(e) => { setPreset('custom'); setTo(e.target.value) }} title={t('to')} />
+        <DateField value={from} onChange={(e) => { setPreset('custom'); setFrom(e.target.value) }} title={t('from')} />
+        <DateField value={to} onChange={(e) => { setPreset('custom'); setTo(e.target.value) }} title={t('to')} />
         <div className="spacer" />
         <button className="btn" onClick={doExport}>{t('export')}</button>
       </div>

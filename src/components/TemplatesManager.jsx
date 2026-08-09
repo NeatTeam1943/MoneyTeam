@@ -11,7 +11,7 @@ export const FIELD_TYPES = ['text', 'number', 'select', 'multiselect']
 export const hasOptions = (ty) => ty === 'select' || ty === 'multiselect'
 
 // Mentor-managed shopping templates: a name + a list of typed fields.
-export default function TemplatesManager({ canWrite, onChanged }) {
+export default function TemplatesManager({ canWrite, canDelete = canWrite, onChanged }) {
   const { t } = useI18n()
   const toast = useToast()
   const [rows, setRows] = useState([])
@@ -52,7 +52,12 @@ export default function TemplatesManager({ canWrite, onChanged }) {
                 {canWrite && (
                   <td>
                     <button className="btn btn-ghost btn-sm" onClick={() => { setEditing(r); setOpen(true) }}>{t('edit')}</button>
-                    <button className="btn btn-ghost btn-sm btn-danger" onClick={() => del(r)}>{t('delete')}</button>
+                    {/* Hidden rather than shown-and-rejected: the database
+                        refuses a student's delete either way, and a button
+                        that always fails is worse than no button. */}
+                    {canDelete && (
+                      <button className="btn btn-ghost btn-sm btn-danger" onClick={() => del(r)}>{t('delete')}</button>
+                    )}
                   </td>
                 )}
               </tr>

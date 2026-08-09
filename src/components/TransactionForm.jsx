@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import DateField from './DateField'
 import { supabase } from '../lib/supabase'
 import { useI18n } from '../lib/i18n'
 import { useAuth } from '../context/AuthContext'
@@ -11,7 +12,7 @@ import { useLookups } from '../lib/useLookups'
 
 const OTHER_TYPES = ['income', 'transfer', 'in_kind'] // expense handled separately (with lines)
 
-export default function TransactionForm({ editing, initial, seasonId, accounts, categories, sources, budgets = [], vendors = [], onClose, onSaved }) {
+export default function TransactionForm({ editing, initial, seasonId, accounts, categories, sources, budgets = [], vendors = [], onClose, onSaved, onPreview }) {
   const { t } = useI18n()
   const { isMentor } = useAuth()
   const lk = useLookups()
@@ -31,13 +32,17 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
     vendor: seed.vendor || '',
     description: seed.description || '',
     payer_name: seed.payer_name || '',
-    receipt_url: seed.receipt_url || '',
+    // The list, seeded from whichever column the row actually has. The old
+    // form showed only a file input, so an existing receipt looked like no
+    // receipt at all — a file input cannot display a value it did not receive.
+    receipt_urls: (seed.receipt_urls?.length ? seed.receipt_urls
+      : (seed.receipt_url ? [seed.receipt_url] : [])),
     notes: seed.notes || '',
     team_scope: seed.team_scope || 'both',
   }))
   // expense lines: [{ budget_id, amount, description, shopping_item_id }]
   const [lines, setLines] = useState(() => seed.lines?.length ? seed.lines.map(normLine) : [emptyLine()])
-  const [file, setFile] = useState(null)
+  const [files, setFiles] = useState([])
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -98,12 +103,18 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
   const addLine = () => setLines([...lines, emptyLine()])
   const removeLine = (i) => setLines(lines.length > 1 ? lines.filter((_, idx) => idx !== i) : lines)
 
-  async function uploadReceipt() {
-    if (!file) return f.receipt_url || null
-    const path = `${seasonId}/${crypto.randomUUID()}-${file.name}`
-    const up = await supabase.storage.from('receipts').upload(path, file)
-    if (up.error) throw up.error
-    return up.data.path
+  // Returns the full list: the ones already attached plus anything newly
+  // picked. Uploads run together rather than one after another — a bank fee
+  // slip should not wait on a 3 MB invoice.
+  async function uploadReceipts() {
+    if (!files.length) return f.receipt_urls
+    const uploaded = await Promise.all(files.map(async (file) => {
+      const path = `${seasonId}/${crypto.randomUUID()}-${file.name}`
+      const up = await supabase.storage.from('receipts').upload(path, file)
+      if (up.error) throw up.error
+      return up.data.path
+    }))
+    return [...f.receipt_urls, ...uploaded]
   }
 
   async function saveExpense() {
@@ -112,7 +123,7 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
     if (!clean.length) { setErr(t('needOneLine')); return }
     setErr(''); setBusy(true)
     try {
-      const receipt_url = await uploadReceipt()
+      const receipt_urls = await uploadReceipts()
       const p_lines = clean.map((l) => ({
         budget_id: l.budget_id || null,
         amount: Number(l.amount),
@@ -133,7 +144,11 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
         p_account_id: f.account_id,
         p_vendor: f.vendor || null,
         p_description: f.description || null,
-        p_receipt_url: receipt_url,
+        // Both are sent: the array is what the app uses, and receipt_url keeps
+        // the first one so an older build — or the Excel backup, which reads
+        // that column — still finds a receipt.
+        p_receipt_url: receipt_urls[0] || null,
+        p_receipt_urls: receipt_urls,
         p_lines,
         p_payer_name: f.payer_name || null,
         // null lets the database derive it from the lines: uniform lines set the
@@ -221,7 +236,7 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
       )}
 
       <div className="grid-2">
-        <div className="field"><label>{t('date')}</label><input type="date" value={f.date} onChange={set('date')} /></div>
+        <div className="field"><label>{t('date')}</label><DateField value={f.date} onChange={set('date')} /></div>
         {f.type !== 'in_kind' && !isExpense && (
           <div className="field"><label>{t('amount')} (₪)</label>
             <CurrencyAmountInput value={f.amount} onChange={(v) => setF({ ...f, amount: v })} fx={fx} onFxChange={setFx} placeholder={t('amount')} />
@@ -333,7 +348,29 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
             </div>
           </div>
 
-          <div className="field"><label>{t('receipt')} (קבלה)</label><input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} /></div>
+          <div className="field">
+            <label>{t('receipts')}</label>
+            {/* Already attached — listed so editing a transaction shows what is
+                on it. Previously the form had only a file input, which always
+                renders empty, so an existing receipt looked like none. */}
+            {f.receipt_urls.map((u, i) => (
+              <div key={u} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
+                <button type="button" className="btn btn-ghost btn-sm"
+                  onClick={() => onPreview?.({ path: u })}>{t('preview')}</button>
+                <span style={{ flex: 1, fontSize: 12, color: 'var(--text-dim)', overflowWrap: 'anywhere' }}>
+                  {u.split('/').pop()}
+                </span>
+                <button type="button" className="btn btn-ghost btn-sm btn-danger"
+                  onClick={() => setF({ ...f, receipt_urls: f.receipt_urls.filter((_, ix) => ix !== i) })}>✕</button>
+              </div>
+            ))}
+            <input type="file" multiple onChange={(e) => setFiles([...(e.target.files || [])])} />
+            {files.length > 0 && (
+              <p style={{ fontSize: 12, color: 'var(--text-faint)', margin: '4px 0 0' }}>
+                {t('willUpload').replace('{n}', files.length)}
+              </p>
+            )}
+          </div>
         </>
       )}
 

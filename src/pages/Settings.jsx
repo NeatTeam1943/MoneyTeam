@@ -9,7 +9,7 @@ import PendingUsers from '../components/PendingUsers'
 
 export default function Settings() {
   const { t } = useI18n()
-  const { isMentor } = useAuth()
+  const { isMentor, canPropose } = useAuth()
   const { refresh: refreshSeasons } = useSeason()
   // Accounts, categories, sources, vendors, priority levels and templates all
   // live in the shared lookups cache, which loads ONCE per sign-in. Editing any
@@ -114,9 +114,24 @@ export default function Settings() {
           <button key={tb} className={'tab' + (tab === tb ? ' active' : '')} onClick={() => setTab(tb)}>{t(tb)}</button>
         ))}
       </div>
-      {!isMentor && <p style={{ color: 'var(--text-faint)', fontSize: 13 }}>{t('contactMentor')}</p>}
+      {/* Not on the templates tab: a student CAN edit there, and telling them
+          to ask a mentor for something they are allowed to do would send them
+          away from a job they can finish themselves. */}
+      {!isMentor && tab !== 'templates' && (
+        <p style={{ color: 'var(--text-faint)', fontSize: 13 }}>{t('contactMentor')}</p>
+      )}
+      {!isMentor && tab === 'templates' && canPropose && (
+        <p style={{ color: 'var(--text-faint)', fontSize: 13 }}>{t('templatesStudentHint')}</p>
+      )}
       {tab === 'members' && isMentor && <PendingUsers />}
-      {tab === 'templates' ? <TemplatesManager canWrite={isMentor} onChanged={reloadLookups} /> : <SimpleCrud key={tab} {...cfg} />}
+      {/* Templates are the one settings table students may edit. They hold no
+          money and cannot approve or reclassify anything — the people who know
+          which fields a part needs are the ones ordering it. Deleting stays
+          with mentors: removing a template others are using is the only action
+          here that is disruptive and irreversible from the UI. */}
+      {tab === 'templates'
+        ? <TemplatesManager canWrite={canPropose} canDelete={isMentor} onChanged={reloadLookups} />
+        : <SimpleCrud key={tab} {...cfg} />}
     </div>
   )
 }

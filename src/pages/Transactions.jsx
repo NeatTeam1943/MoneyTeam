@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import DateField from '../components/DateField'
 import { supabase, withTimeout } from '../lib/supabase'
 import { useRefreshOnReturn } from '../lib/useRefreshOnReturn'
 import { useAuth } from '../context/AuthContext'
@@ -275,8 +276,8 @@ export default function Transactions() {
           <option value="">{t('source')}: {t('all')}</option>
           {lk.sources.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
-        <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} title={t('date')} />
-        <input type="date" value={to} onChange={(e) => setTo(e.target.value)} title={t('date')} />
+        <DateField value={from} onChange={(e) => setFrom(e.target.value)} title={t('date')} />
+        <DateField value={to} onChange={(e) => setTo(e.target.value)} title={t('date')} />
         <div className="spacer" />
         <button className="btn" onClick={doExport}>{t('export')}</button>
         <button className="btn" onClick={doReceiptsZip} disabled={!!zipping}>
@@ -338,7 +339,23 @@ export default function Transactions() {
                   </button>
                 </td>
                 {!isParent && <td style={{ color: 'var(--text-dim)' }}>{r.payer_display || '—'}</td>}
-                {!isParent && <td><Receipt path={r.receipt_url} number={r.receipt_number} onOpen={setPreview} /></td>}
+                {!isParent && (
+                  <td>
+                    {(() => {
+                      const rs = r.receipt_urls?.length ? r.receipt_urls : (r.receipt_url ? [r.receipt_url] : [])
+                      if (!rs.length) return '—'
+                      return (
+                        <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 2 }}>
+                          {rs.map((u, i) => (
+                            <Receipt key={u} path={u} allPaths={rs}
+                              number={rs.length > 1 ? `${r.receipt_number || ''} ${i + 1}`.trim() : r.receipt_number}
+                              onOpen={setPreview} />
+                          ))}
+                        </span>
+                      )
+                    })()}
+                  </td>
+                )}
                 {(canTransact || canPropose) && (
                   <td>
                     {/* A mentor edits anything; anyone else only their own
@@ -416,10 +433,12 @@ export default function Transactions() {
         />
       )}
 
-      {preview && <ReceiptPreview path={preview.path} number={preview.number} onClose={() => setPreview(null)} />}
+      {preview && <ReceiptPreview
+          paths={preview.paths} path={preview.path} number={preview.number} onClose={() => setPreview(null)} />}
 
       {showForm && (
         <TransactionForm
+          onPreview={setPreview}
           editing={editing}
           seasonId={activeId}
           accounts={lk.accountsActive}
@@ -435,7 +454,14 @@ export default function Transactions() {
   )
 }
 
-function Receipt({ path, number, onOpen }) {
+// allPaths lets the preview page through every receipt on the transaction, so
+// an invoice and its bank-fee slip are one dialog rather than two trips.
+function Receipt({ path, number, onOpen, allPaths }) {
   if (!path) return <span style={{ color: 'var(--text-faint)' }}>{number || '—'}</span>
-  return <button className="btn btn-ghost btn-sm" onClick={() => onOpen({ path, number })}>קבלה 🔍</button>
+  return (
+    <button className="btn btn-ghost btn-sm"
+      onClick={() => onOpen({ path, paths: allPaths, number })}>
+      {number || 'קבלה'} 🔍
+    </button>
+  )
 }

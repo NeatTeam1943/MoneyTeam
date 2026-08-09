@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useI18n } from '../lib/i18n'
+import { money } from '../lib/format'
+import { lineTotalOf } from '../domain/money'
 import { useAuth } from '../context/AuthContext'
 import Modal from './Modal'
 import { catLabel } from '../context/LookupsContext'
@@ -71,7 +73,11 @@ export default function ShoppingForm({ editing, seasonId, categoryTree, vendorsA
       category_id: f.category_id,
       vendor: f.vendor || null,
       est_price: f.est_price === '' ? null : Number(f.est_price),
-      quantity: Math.max(0, Number(f.quantity) || 0),
+      // An EMPTY box means "I did not say", which is 1 — the same default a new
+      // row starts with. An explicit 0 is a real answer and must survive: the
+      // 2027 list has five deliberate zero-quantity rows. `Number('') || 0`
+      // collapsed both cases to 0.
+      quantity: String(f.quantity).trim() === '' ? 1 : Math.max(0, Number(f.quantity) || 0),
       priority_level_id: f.priority_level_id || null,
       notes: f.notes || null,
       template_id: f.template_id || null,
@@ -196,8 +202,24 @@ export default function ShoppingForm({ editing, seasonId, categoryTree, vendorsA
       </div>
 
       <div className="grid-2">
-        <div className="field"><label>{t('estPrice')} (₪)</label><input type="number" step="0.01" value={f.est_price} onChange={set('est_price')} /></div>
-        <div className="field"><label>{t('quantity')}</label><input type="number" min="0" value={f.quantity} onChange={set('quantity')} /></div>
+        <div className="field">
+          <label>{t('unitPrice')} (₪)</label>
+          <input type="number" step="0.01" value={f.est_price} onChange={set('est_price')} />
+        </div>
+        <div className="field">
+          <label>{t('unitCount')}</label>
+          <input type="number" min="0" value={f.quantity} onChange={set('quantity')} />
+        </div>
+        {/* The running total, because "20" against "100" is only obviously wrong
+            once you see it resolve to ₪2,000. Labels alone did not stop it. */}
+        {Number(f.est_price) > 0 && (
+          <div className="field" style={{ alignSelf: 'end' }}>
+            <label>&nbsp;</label>
+            <div className="mono" style={{ padding: '9px 0', color: 'var(--text-dim)' }}>
+              {t('lineTotalIs').replace('{v}', money(lineTotalOf(f)))}
+            </div>
+          </div>
+        )}
       </div>
       <div className="grid-2">
         <div className="field">

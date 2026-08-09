@@ -7,11 +7,11 @@ import { useSeason } from '../context/SeasonContext'
 import { useI18n } from '../lib/i18n'
 import { useToast } from '../lib/toast'
 import { useLookups } from '../lib/useLookups'
-import { money } from '../lib/format'
+import { money, lineTotal } from '../lib/format'
 import { buildBudgetRows, groupSiblings } from '../domain/budgets'
 import { buildOwnership } from '../domain/budgetOwnership'
 import { roundMoney } from '../domain/money'
-import { GROUPING, SCOPE } from '../domain/constants'
+import { GROUPING, SCOPE, OPEN_STATUSES } from '../domain/constants'
 import { emptyCalcRow, rowTotal, calcTotal, cleanCalc, calcStatus } from '../domain/budgetCalc'
 import Modal from '../components/Modal'
 import { catLabel } from '../context/LookupsContext'
@@ -146,8 +146,25 @@ export default function Budgets() {
     const sum = (pick) => roundMoney(top.reduce((s, r) => s + pick(r), 0))
     const planned = sum((r) => r.amount)
     const spent = sum((r) => r.spent)
-    return { planned, spent, requested: sum((r) => r.requested), remaining: roundMoney(planned - spent) }
-  }, [budgets, lk, ts])   // eslint-disable-line react-hooks/exhaustive-deps
+
+    // `requested` is NOT summed from the rows, unlike amount and spent.
+    //
+    // Those two are partitioned: a budget's amount is its own, and a line of
+    // spend belongs to exactly one budget and rolls up one chain, so adding the
+    // top-level rows gives each shekel once. `requested` is not built that way
+    // — it counts every open item whose category falls in the budget's subtree,
+    // so one wish-list item is counted by its own category's pot, by every
+    // ancestor's, and by each per-program pot on those categories. On a
+    // realistic tree that came to 3.2x the real figure.
+    //
+    // The season's outstanding requests are just the open items, added once.
+    const requested = roundMoney(
+      shopping
+        .filter((r) => OPEN_STATUSES.includes(r.status) && ts.matches(r.team_scope))
+        .reduce((s, r) => s + lineTotal(r), 0))
+
+    return { planned, spent, requested, remaining: roundMoney(planned - spent) }
+  }, [budgets, shopping, lk, ts])   // eslint-disable-line react-hooks/exhaustive-deps
 
   const chartRows = useMemo(() => buildRows(categoryGrouping),
     [scopedBudgets, scopedExpenses, scopedShopping, budgetCat, lk, t, categoryGrouping])   // eslint-disable-line react-hooks/exhaustive-deps

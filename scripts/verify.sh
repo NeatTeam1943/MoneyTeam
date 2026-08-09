@@ -28,6 +28,7 @@ step "no raw money reads"    node scripts/check-approval-filter.mjs
 step "golden master budgets" node scripts/golden-master-budgets.mjs
 step "golden master ledger"  node scripts/golden-master-ledger.mjs
 step "golden master shop+sim" node scripts/golden-master-shopping-sim.mjs
+step "money audit (shared/split)" bash scripts/audit-money.sh
 echo
 [ $fail -eq 0 ] && echo "  ALL CHECKS PASSED" || echo "  SOMETHING FAILED — do not ship"
 exit $fail

@@ -571,7 +571,16 @@ html, body { max-width: 100%; overflow-x: hidden; }
      with eight controls was eight rows of scrolling before the data started —
      12 rows on the transactions page, now 6. calc() accounts for the gap so
      two really fit rather than wrapping back to one. */
-  .toolbar > .btn, .toolbar > select { flex: 1 1 calc(50% - 4px); min-width: 0; }
+  /* Filters pair up and share the row. An ACTION button does not: "+ הוספה"
+     is one short word, and stretching it across half a screen makes it look
+     like a banner rather than something you press. `1 1` lets a box GROW to
+     fill; `0 1` lets it shrink if space is tight but never inflate. */
+  .toolbar > select { flex: 1 1 calc(50% - 4px); min-width: 0; }
+  .toolbar > .btn { flex: 0 1 auto; min-width: 0; }
+  /* A flex spacer in a WRAPPING toolbar takes a whole row to itself and pushes
+     the button after it onto its own line, where a short label looks stranded.
+     On one line it is doing its job; once the bar wraps it is just a gap. */
+  .toolbar > .spacer { display: none; }
   /* Search keeps the full width: a dropdown reads fine at half width because
      its label is short, but a search box needs room to show what was typed. */
   .toolbar > input[type="text"], .toolbar > input:not([type]) { flex: 1 1 100%; }

@@ -246,7 +246,12 @@ export default function Budgets() {
               there, or a goal gets blamed for a shortfall that predates it. */}
           {funding.unfundedWithoutGoals > 0 && (
             <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--text-faint)' }}>
-              {t('unfundedEvenWithoutGoals').replace('{v}', money(funding.unfundedWithoutGoals))}
+              {/* Naming the goals' actual contribution, not just the pre-existing
+                  figure: "of that, 99,471" reads as though the goals caused the
+                  gap, when they account for 100 of it. */}
+              {t('unfundedEvenWithoutGoals')
+                .replace('{v}', money(funding.unfundedWithoutGoals))
+                .replace('{g}', money(funding.unfunded - funding.unfundedWithoutGoals))}
             </p>
           )}
         </div>

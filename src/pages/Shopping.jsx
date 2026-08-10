@@ -120,7 +120,12 @@ export default function Shopping() {
   // category in arrival order, which is where a long list stops being scannable.
   const [sort, setSort] = useState({ col: 'priority', dir: 'asc', then: 'name', thenDir: 'asc' })
   function toggleSort(col) {
-    setSort((s) => (s.col === col ? { col, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'asc' }))
+    // Spread `s` first: the old version built a fresh object with only col and
+    // dir, so every click on a column header silently discarded the secondary
+    // sort. The dropdown looked ignored because the value was being deleted.
+    setSort((s) => (s.col === col
+      ? { ...s, col, dir: s.dir === 'asc' ? 'desc' : 'asc' }
+      : { ...s, col, dir: 'asc' }))
   }
   const th = (col, label) => (
     <th onClick={() => toggleSort(col)} style={{ cursor: 'pointer' }}>{label}{sort.col === col ? (sort.dir === 'asc' ? ' ↑' : ' ↓') : ''}</th>

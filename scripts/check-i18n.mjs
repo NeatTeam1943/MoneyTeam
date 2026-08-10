@@ -12,7 +12,10 @@ const files=[];
 let bad=0;
 for(const f of files){
   const c=fs.readFileSync(f,'utf8');
-  for(const m of c.matchAll(/\bt\(\s*'([^']+)'\s*\)/g)){
+  // Both quote styles. Matching only single quotes meant t("guess") was
+  // invisible to this check — the key was missing from both dictionaries and
+  // the placeholder would have rendered blank, with nothing to warn about it.
+  for(const m of c.matchAll(/\bt\(\s*['"]([^'"]+)['"]\s*\)/g)){
     const k=m[1];
     if(dynamic.has(k))continue;
     if(!he.has(k)||!en.has(k)){console.log('MISSING',k,'->',f,he.has(k)?'':'[no he]',en.has(k)?'':'[no en]');bad++;}

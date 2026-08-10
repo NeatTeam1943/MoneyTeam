@@ -92,6 +92,12 @@ export default function Simulation() {
   // back to the shopping item. Someone planning wants to ask "what if this
   // costs 400" without committing a number they do not have yet, and quietly
   // saving it would turn a guess into a quoted price.
+  // Filters for the item table. Not part of the scenario: they change what you
+  // are looking at, not what you are planning, and a saved filter would make a
+  // returning user think items had vanished.
+  const [fCategory, setFCategory] = useState('')
+  const [fSearch, setFSearch] = useState('')
+
   const guessPrice = scenario.guessPrice || {}
   const setGuess = (id, v) =>
     setScenario((sc) => ({ ...sc, guessPrice: { ...(sc.guessPrice || {}), [id]: v } }))
@@ -103,8 +109,20 @@ export default function Simulation() {
   }
   // "priced" now includes anything given a guess, so a guessed row can be
   // picked and funded like any other.
-  const priced = useMemo(() => open.filter((r) => cost(r) > 0), [open, guessPrice])
-  const unpriced = useMemo(() => open.filter((r) => cost(r) <= 0), [open, guessPrice])
+  // Category picks up descendants, so choosing רובוט includes מנועים.
+  const visible = useMemo(() => {
+    const set = fCategory ? lk.descendantsOf(fCategory) : null
+    const q = fSearch.trim().toLowerCase()
+    return open.filter((r) => {
+      if (set && !set.has(r.category_id)) return false
+      if (!q) return true
+      return [r.name, lk.categoryName[r.category_id], r.sku, r.vendor, r.notes]
+        .some((v) => String(v || '').toLowerCase().includes(q))
+    })
+  }, [open, fCategory, fSearch, lk])
+
+  const priced = useMemo(() => visible.filter((r) => cost(r) > 0), [visible, guessPrice])
+  const unpriced = useMemo(() => visible.filter((r) => cost(r) <= 0), [visible, guessPrice])
 
   const selected = useMemo(() => open.filter((r) => picked.has(r.id)), [open, picked])
   const accountFor = (id) => fundBy[id] || fundFrom
@@ -174,19 +192,17 @@ export default function Simulation() {
     <div>
       <p style={{ color: 'var(--text-faint)', fontSize: 13, marginTop: 0 }}>{t('simulationHint')}</p>
 
-      {/* A scenario is a draft: it is kept in this browser so leaving the page
-          no longer discards it, and it is never written to the ledger. Saying
-          so matters — an unexplained figure that survives a reload looks like
-          something that was recorded. */}
+      {/* One line, not a panel. The previous version was a full bordered box
+          with a heading and a paragraph — an explanation the size of a warning,
+          for a thing that is working correctly. */}
       {scenarioDirty && (
-        <div className="panel panel-pad" style={{
-          marginBottom: 14, display: 'flex', gap: 10, alignItems: 'center',
-          flexWrap: 'wrap', borderInlineStart: '3px solid var(--orange)',
+        <p style={{
+          display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap',
+          margin: '0 0 12px', fontSize: 12, color: 'var(--text-faint)',
         }}>
-          <b style={{ fontSize: 13 }}>{t('scenarioKept')}</b>
-          <span style={{ color: 'var(--text-faint)', fontSize: 12, flex: 1 }}>{t('scenarioKeptHint')}</span>
-          <button className="btn btn-sm" onClick={clearScenario}>{t('scenarioClear')}</button>
-        </div>
+          <span title={t('scenarioKeptHint')}>{t('scenarioKept')}</span>
+          <button className="btn btn-ghost btn-sm" onClick={clearScenario}>{t('scenarioClear')}</button>
+        </p>
       )}
 
       <div className="stats">
@@ -334,7 +350,15 @@ export default function Simulation() {
                 <td><TeamScopeBadge scope={r.team_scope} /></td>
                 <td>{lk.categoryName[r.category_id] || '—'}</td>
                 <td>{lk.levelName[r.priority_level_id] || '—'}</td>
-                <td className="num mono">{money(r.est_price)}</td>
+                <td className="num mono">
+                  {lineTotal(r) > 0 ? money(r.est_price) : (
+                    // No price on the item: offer one for the scenario only.
+                    <input type="number" step="0.01" placeholder={t('guess')}
+                      value={guessPrice[r.id] ?? ''}
+                      onChange={(e) => setGuess(r.id, e.target.value)}
+                      style={{ width: '5.5rem' }} />
+                  )}
+                </td>
                 <td className="num">{qtyOf(r)}</td>
                 <td className="num mono">{money(cost(r))}</td>
                 <td>

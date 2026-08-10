@@ -26,6 +26,7 @@ export default function Layout({ children }) {
       { to: '/shopping', key: 'shopping' },
       { to: '/reports', key: 'reports' },
       { to: '/simulation', key: 'simulation' },
+      { to: '/goals', key: 'goals' },
       { to: '/settings', key: 'settings' },
     ]
 

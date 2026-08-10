@@ -536,7 +536,7 @@ function Stat({ k, v, c }) {
   return (
     <div className="stat panel">
       <div className="k">{k}</div>
-      <div className="v" style={{ color: c, fontSize: 24 }}>{v}</div>
+      <div className="v" style={{ color: c }}>{v}</div>
     </div>
   )
 }

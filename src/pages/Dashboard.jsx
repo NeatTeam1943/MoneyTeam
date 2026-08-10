@@ -254,7 +254,11 @@ function Stat({ k, v, c, small }) {
   return (
     <div className="stat panel">
       <div className="k">{k}</div>
-      <div className="v" style={{ color: c, fontSize: small ? 20 : 26 }}>{v}</div>
+      {/* No inline fontSize. It overrode every responsive rule in index.css —
+          which is why the figures kept overflowing their cards on a phone no
+          matter what the clamp said. Size belongs to the stylesheet, which can
+          see the viewport; a `small` variant is a class, not a number. */}
+      <div className={'v' + (small ? ' v-small' : '')} style={{ color: c }}>{v}</div>
     </div>
   )
 }

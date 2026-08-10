@@ -178,7 +178,13 @@ label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 
    available, so the font tracks the actual box. overflow is no longer hidden —
    if a number ever does exceed its card, showing it slightly cramped is far
    better than quietly deleting the currency symbol. */
-.stat { min-width: 0; container-type: inline-size; }
+.stat {
+  min-width: 0; container-type: inline-size;
+  /* A figure that still exceeds its card must not paint over the card beside
+     it. It looked like a stray ₪ belonging to the neighbour — the "5" card in
+     the report had a ₪ next to it that was not its own. */
+  overflow: hidden;
+}
 .stat { padding: 16px 18px; }
 .stat .k {
   color: var(--text-faint); font-size: 12px; font-weight: 700;
@@ -201,30 +207,26 @@ label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 
      break-word, NOT anywhere: digits are never split. money() now emits an
      ordinary space before the ₪, so that space is the break point — the worst
      case is "111,547.90" on one line and "₪" on the next. */
-  /* nowrap, NOT break-word.
-     Letting it wrap did stop the ₪ being clipped, but wrapping is what the
-     browser reaches for FIRST, not last — so in a two-column grid the symbol
-     dropped to its own line, the card doubled in height, and neighbouring
-     cards no longer matched. That is the stretching.
-     The figure is sized from the card instead, so it fits on one line; the
-     clamp floor is low enough that even a seven-figure amount does. */
+  /* nowrap. Letting it wrap did stop the ₪ being clipped, but wrapping is what
+     the browser reaches for FIRST, not last — so in a two-column grid the
+     symbol dropped to its own line, the card doubled in height, and the card
+     beside it no longer matched. Shrink to fit instead of breaking. */
   white-space: nowrap;
-  /* If a figure still cannot fit — a very narrow card, a seven-figure sum — it
-     shrinks visually rather than wrapping or spilling. The alternative is the
-     clipping this whole rule exists to avoid. */
-  min-width: 0;
-  font-size: clamp(0.7rem, 4vw, 1.5rem);
+  font-size: clamp(0.65rem, 3.4vw, 1.5rem);
 }
 @supports (container-type: inline-size) {
-  /* 8cqi keeps a 14-character figure on one line down to a ~110px card. */
-  .stat .v { font-size: clamp(0.7rem, 8cqi, 1.5rem); }
+  /* Sized from the CARD, and low enough that a 14-character figure fits on one
+     line even in a ~150px card. */
+  .stat .v { font-size: clamp(0.65rem, 7cqi, 1.5rem); }
+}
+/* The account-balance cards pack more per row, so they start smaller. */
+.stat .v.v-small { font-size: clamp(0.6rem, 2.8vw, 1.25rem); }
+@supports (container-type: inline-size) {
+  .stat .v.v-small { font-size: clamp(0.6rem, 6cqi, 1.25rem); }
 }
 /* Cards in a row share a height regardless of label length. */
 .stats { align-items: stretch; }
 .stat { display: flex; flex-direction: column; justify-content: space-between; }
-/* Below ~2 columns the grid gives each card enough width that nowrap is safe;
-   this keeps the guarantee explicit rather than relying on the grid. */
-.stats > * { min-width: 7.5rem; }
 
 /* ---------- Table ---------- */
 .table-wrap { overflow-x: auto; }
@@ -488,42 +490,11 @@ html, body { max-width: 100%; overflow-x: hidden; }
   .table-wrap table.data { min-width: max-content; }
   .panel-pad > table.data { min-width: 0; width: 100%; }
   .panel-pad > table.data td, .panel-pad > table.data th { overflow-wrap: anywhere; }
-  .app {
-    grid-template-columns: 1fr;
-    /* `min-height: 100vh` is right for the desktop TWO-COLUMN grid, where it
-       makes the sidebar run the full height beside the content. Once the grid
-       collapses to one column those become two ROWS, and the same rule makes
-       them share the viewport — so a 60px strip of links was handed roughly
-       half the screen of empty background, which is the stretch.
-       auto for the nav, the rest for the page. */
-    grid-template-rows: auto 1fr;
-  }
+  .app { grid-template-columns: 1fr; }
   .sidebar {
     flex-direction: row; overflow-x: auto; -webkit-overflow-scrolling: touch;
     border-inline-end: none; border-block-end: 1px solid var(--line);
     position: sticky; top: 0; z-index: 20;
-    /* The desktop rule sets 20px 14px, which on a row is wasted height. */
-    height: auto; min-height: 0;
-    /* Without align-items the default is `stretch`, so every link grew to the
-       height of the tallest item — the brand block with its 34px logo — and the
-       nav became a ~200px band with one very tall active box in it. */
-    align-items: center;
-    gap: 4px;
-    /* Padding on a scrolling row is not scrollable space — the last item ends
-       flush against the edge and its own padding is clipped. scroll-padding
-       plus a trailing spacer give the end of the row somewhere to go. */
-    padding: 6px 0;
-    scroll-padding-inline: 8px;
-  }
-  .sidebar::before, .sidebar::after {
-    content: ''; flex: 0 0 8px;
-  }
-  /* The logo belongs to the desktop sidebar; on a phone the topbar already
-     carries the identity and this only steals the width the links need. */
-  .sidebar .brand { display: none; }
-  .sidebar .nav-link {
-    flex: 0 0 auto; white-space: nowrap;
-    padding: 8px 10px; margin: 0;
   }
   .sidebar .nav-link { flex: 0 0 auto; white-space: nowrap; }
   .brand { padding: 4px 10px; flex: 0 0 auto; }
@@ -552,6 +523,9 @@ html, body { max-width: 100%; overflow-x: hidden; }
   /* Two columns is the most that stays legible; the figures inside are
      already clamped to fit. */
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  /* With an odd number of cards the last one sat half-width next to a gap.
+     Spanning both columns reads as deliberate rather than as a missing card. */
+  .stats > :last-child:nth-child(odd) { grid-column: 1 / -1; }
   .stat { padding: 10px 10px; }
 
   .panel-pad { padding: 12px; }
@@ -563,19 +537,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
   /* Controls reach for the full row rather than lining up three-to-a-line at
      a width where none of them can show their label. */
   .toolbar { gap: 8px; }
-  /* Two per row, not one. `flex: 1 1 100%` gave every filter a full line, so a
-     toolbar with eight controls was eight rows of scrolling before the data
-     even started. calc() accounts for the gap so two really fit side by side.
-
-     Text inputs keep the full width: a filter dropdown reads fine at half
-     width because its label is short, but a search box needs room to show what
-     was typed. */
-  .toolbar > .btn, .toolbar > select { flex: 1 1 calc(50% - 4px); min-width: 0; }
-  .toolbar > input[type="text"], .toolbar > input:not([type]) { flex: 1 1 100%; }
-  .toolbar > .date-he { flex: 1 1 calc(50% - 4px); max-width: none; }
-  /* An icon-only button — the ✕ clear, the sort direction — should not claim
-     half a row. */
-  .toolbar > .btn-sm { flex: 0 0 auto; }
+  .toolbar > .btn, .toolbar > select, .toolbar > input { flex: 1 1 100%; }
   .field input, .field select, .field textarea { font-size: 1rem; }  /* >=16px stops iOS zooming on focus */
 
   /* Capping the height without giving the modal a scroll container let its
@@ -709,12 +671,7 @@ table.data td.desc-cell { min-width: 12rem; }
      whole row, which is why they looked so odd next to the short selects. */
   width: auto; min-width: 8.5rem; max-width: 11rem;
 }
-/* Above 560px a date field is a fixed narrow control. Below it, the mobile
-   toolbar rule pairs it with its sibling instead — declared here so the two do
-   not fight over source order. */
-@media (min-width: 561px) {
-  .toolbar .date-he { flex: 0 1 9.5rem; }
-}
+.toolbar .date-he { flex: 0 1 9.5rem; }
 .date-he > input[type="date"] {
   position: relative; z-index: 1; width: 100%;
   color: transparent;                 /* hide the browser's own mm/dd/yyyy */

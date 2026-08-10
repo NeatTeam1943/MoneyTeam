@@ -70,7 +70,7 @@ export default function Budgets() {
         supabase.from('ledger_lines_full').select('amount,budget_id,team_scope,category_id,season_id,tx_team_scope').eq('season_id', activeId),
         supabase.from('shopping_items').select('est_price,quantity,category_id,status,team_scope').eq('season_id', activeId),
           // Goals span seasons — deliberately no season filter.
-          supabase.from('savings_goals').select('reserved,team_scope,archived_at'),
+          supabase.from('savings_goals').select('*'),
           supabase.from('account_balances').select('*'),
       ]))
       if (!b.error) setBudgets(b.data || [])

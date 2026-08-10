@@ -476,6 +476,18 @@ html, body { max-width: 100%; overflow-x: hidden; }
     flex-direction: row; overflow-x: auto; -webkit-overflow-scrolling: touch;
     border-inline-end: none; border-block-end: 1px solid var(--line);
     position: sticky; top: 0; z-index: 20;
+    /* Without align-items the default is `stretch`, so every link grew to the
+       height of the tallest item — the brand block with its 34px logo — and the
+       nav became a ~200px band with one very tall active box in it. */
+    align-items: center;
+    gap: 4px; padding: 6px 8px;
+  }
+  /* The logo belongs to the desktop sidebar; on a phone the topbar already
+     carries the identity and this only steals the width the links need. */
+  .sidebar .brand { display: none; }
+  .sidebar .nav-link {
+    flex: 0 0 auto; white-space: nowrap;
+    padding: 8px 10px; margin: 0;
   }
   .sidebar .nav-link { flex: 0 0 auto; white-space: nowrap; }
   .brand { padding: 4px 10px; flex: 0 0 auto; }

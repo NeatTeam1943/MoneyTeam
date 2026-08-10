@@ -39,6 +39,7 @@ export default function Simulation() {
   const [lines, setLines] = useState([])
   const [balances, setBalances] = useState([])
   const [goals, setGoals] = useState([])
+  const [goalsError, setGoalsError] = useState('')
   const [loading, setLoading] = useState(true)
 
   // Everything the user builds up is one object, kept in localStorage so a trip
@@ -74,12 +75,20 @@ export default function Simulation() {
         fetchCached('budgets', { seasonId: activeId }),
         supabase.from('ledger_lines_full').select('amount,budget_id,team_scope,category_id,season_id,tx_team_scope').eq('season_id', activeId),
         supabase.from('account_balances').select('*'),
-        supabase.from('savings_goals').select('id,name,target,reserved,team_scope,archived_at,target_date'),
+        // archived_at is only added by migration 38. Asking for it before that ran
+        // failed the whole query and made the goals section vanish with no
+        // explanation, so the column list stays to what migration 37 created and
+        // archiving is handled client-side from whatever comes back.
+        supabase.from('savings_goals').select('*'),
       ]))
       if (!it.error) setItems(it.data || [])
       if (!bg.error) setBudgets(bg.data || [])
       if (!tl.error) setLines(tl.data || [])
+      // A failed goals query used to leave the section silently absent — the most
+      // likely cause being migration 38 not yet run, since the query asks for
+      // archived_at. Say so instead of showing nothing.
       if (!gl.error) setGoals(gl.data || [])
+      else setGoalsError(gl.error.message || String(gl.error))
       if (!bal.error) setBalances(bal.data || [])
     } catch (e) {
       if (e.message === 'timeout') toast.error(t('loadTimedOut'))
@@ -172,6 +181,7 @@ export default function Simulation() {
   // Per goal, not just a total: planning is where someone chooses between a
   // purchase and a goal, and that choice needs the goals named.
   const goalsNow = useMemo(
+    // `archived_at` may be undefined on a database still on migration 37.
     () => goals.filter((g) => ts.matches(g.team_scope) && !g.archived_at),
     [goals, ts])
   const goalOutlook = useMemo(
@@ -286,6 +296,11 @@ export default function Simulation() {
           list order, not pro rata: if money runs short someone picks which
           goal waits, and spreading the shortfall evenly would be a decision
           nobody made. */}
+      {goalsError && (
+        <p style={{ fontSize: 13, color: 'var(--danger)', margin: '0 0 12px' }}>
+          {t('goalsUnavailable')}
+        </p>
+      )}
       {goalsNow.length > 0 && (
         <>
           <div className="section-title">{t('goalsAfterPlan')}</div>

@@ -55,7 +55,7 @@ export default function Dashboard() {
     // What the accounts held the day this season opened. Derived, not
     // stored: the sum of every approved movement before the start date,
     // so it cannot drift when someone back-dates a transaction.
-    supabase.from('savings_goals').select('reserved,team_scope').eq('season_id', activeId)
+    supabase.from('savings_goals').select('reserved,team_scope')
       .then(({ data, error }) => { if (!error) setGoals(data || []) })
     supabase.rpc('season_opening_balances', { p_season_id: activeId })
       .then(({ data, error }) => { if (!error) setOpening(data || []) })

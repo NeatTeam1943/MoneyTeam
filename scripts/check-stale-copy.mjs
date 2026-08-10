@@ -20,7 +20,24 @@ const rules = [
   },
 ]
 
-let bad = 0
+// Goals are not season-scoped. Filtering them by season made a goal disappear
+// when the season picker moved while the money it reserved was still held, and
+// re-creating it per season reserved the same shekel twice. Cheap to reintroduce
+// by copying a nearby query, so it is asserted rather than remembered.
+const goalQueries = ['src/pages/Goals.jsx', 'src/pages/Dashboard.jsx',
+  'src/pages/Reports.jsx', 'src/pages/Simulation.jsx']
+let seasonScoped = 0
+for (const p of goalQueries) {
+  const text = src(p)
+  const re = /savings_goals'\)[^\n]*\.eq\('season_id'/g
+  for (const m of text.matchAll(re)) {
+    seasonScoped++
+    console.log(`  SEASON-SCOPED GOAL QUERY in ${p}`)
+    console.log('         goals span seasons; filtering by season hides live reservations')
+  }
+}
+
+let bad = seasonScoped
 for (const r of rules) {
   const m = [...i18n.matchAll(new RegExp(`${r.key}: '([^']*)'`, 'g'))].map((x) => x[1])
   if (!m.length) continue

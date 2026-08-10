@@ -29,7 +29,7 @@ export default function Goals() {
   const load = async () => {
     if (!activeId || !uid) return
     const [g, b] = await Promise.all([
-      supabase.from('savings_goals').select('*').eq('season_id', activeId).order('target_date', { nullsFirst: false }),
+      supabase.from('savings_goals').select('*').order('target_date', { nullsFirst: false }),
       supabase.from('account_balances').select('*'),
     ])
     if (!g.error) setGoals(g.data || [])
@@ -43,8 +43,18 @@ export default function Goals() {
   const cash = useMemo(
     () => balances.reduce((s, b) => s + (Number(b.balance) || 0), 0), [balances])
 
-  const shown = useMemo(() => goals.filter((g) => ts.matches(g.team_scope)), [goals, ts])
+  const [showArchived, setShowArchived] = useState(false)
+  const shown = useMemo(
+    () => goals.filter((g) => ts.matches(g.team_scope) && (showArchived || !g.archived_at)),
+    [goals, ts, showArchived])
   const summary = useMemo(() => goalsSummary(shown, cash), [shown, cash])
+
+  const archive = async (g) => {
+    await supabase.from('savings_goals')
+      .update({ archived_at: g.archived_at ? null : new Date().toISOString() })
+      .eq('id', g.id)
+    load()
+  }
 
   const remove = async (g) => {
     if (!window.confirm(t('confirmDelete'))) return
@@ -78,12 +88,22 @@ export default function Goals() {
         </div>
       )}
 
-      {canPropose && (
-        <button className="btn btn-primary" style={{ marginBottom: 14 }}
-          onClick={() => { setEditing(null); setShowForm(true) }}>
-          + {t('addGoal')}
-        </button>
-      )}
+      <div className="toolbar">
+        {canPropose && (
+          <button className="btn btn-primary"
+            onClick={() => { setEditing(null); setShowForm(true) }}>
+            + {t('addGoal')}
+          </button>
+        )}
+        {/* Without this an archived goal is unreachable, which would make
+            archiving a slower delete. */}
+        {goals.some((g) => g.archived_at) && (
+          <button className={'btn btn-sm' + (showArchived ? ' btn-primary' : '')}
+            onClick={() => setShowArchived((v) => !v)}>
+            {t('showArchived')}
+          </button>
+        )}
+      </div>
 
       {!shown.length && <div className="empty">{t('noGoals')}</div>}
 
@@ -137,8 +157,14 @@ export default function Goals() {
               )}
 
               {isMentor && (
-                <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
+                <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   <button className="btn btn-ghost btn-sm" onClick={() => { setEditing(g); setShowForm(true) }}>{t('edit')}</button>
+                  {/* Archiving, not deleting: a goal that was reached is part of
+                      the record, and now that goals outlive their season there
+                      has to be a way off the list other than removal. */}
+                  <button className="btn btn-ghost btn-sm" onClick={() => archive(g)}>
+                    {g.archived_at ? t('unarchive') : t('archive')}
+                  </button>
                   <button className="btn btn-ghost btn-sm btn-danger" onClick={() => remove(g)}>{t('delete')}</button>
                 </div>
               )}
@@ -190,7 +216,10 @@ function GoalForm({ editing, seasonId, categories, canSetReserved, onClose, onSa
     if (!(Number(f.target) > 0)) { setErr(t('targetRequired')); return }
     setBusy(true); setErr('')
     const payload = {
-      season_id: seasonId,
+      // Recorded as provenance — which season this was raised in — never used
+      // to filter. A goal outlives the season it was created in, and the money
+      // backing it carries across too.
+      season_id: editing ? editing.season_id : seasonId,
       name: f.name.trim(),
       target: Number(f.target),
       target_date: f.target_date || null,

@@ -15,7 +15,7 @@ import { buildOwnership } from '/tmp/A_budgetOwnership.mjs'
 import { totalsOf, overBudgetOf } from '/tmp/A_ledger.mjs'
 import { linesByTransaction, attributableAmount, touchesScope, spendByScope, exclusiveVsShared, splitByExclusivity } from '/tmp/A_ts.mjs'
 import { projectBudgets, newlyOver } from '/tmp/A_simulation.mjs'
-import { spendableAfterGoals, goalImpact } from '/tmp/A_goals.mjs'
+import { spendableAfterGoals, goalImpact, budgetFundingGap } from '/tmp/A_goals.mjs'
 
 const f = (n) => Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 let fails = 0
@@ -218,6 +218,19 @@ for (const [lbl, picked, wantEx, wantSh] of [
   const broke = spendableAfterGoals(3000, goals)
   check('available never goes below zero', broke.available, 0)
   check('and over-reservation is flagged', broke.overReserved ? 1 : 0, 1)
+
+  // Reserving must not move any budget. It changes how much of the ceiling the
+  // bank can cover, and nothing else.
+  const gap = budgetFundingGap(15000, 17631.95, goals)
+  check('budget ceiling is untouched by reserving', gap.budgetRemaining, 15000)
+  check('unfunded permission = ceiling - spendable', gap.unfunded, 6368.05)
+  check('no goals -> nothing unfunded', budgetFundingGap(15000, 17631.95, []).unfunded, 0)
+  check('a funded budget reports no gap', budgetFundingGap(5000, 17631.95, goals).unfunded, 0)
+
+  // A shortfall that predates the goals must be told apart, or a goal is
+  // blamed for it.
+  const pre = budgetFundingGap(30000, 17631.95, goals)
+  check('pre-existing shortfall is separated', pre.unfundedWithoutGoals, 12368.05)
 }
 
 console.log('\n=== overspend is per pot, and a 0 pot is a real ceiling ===')

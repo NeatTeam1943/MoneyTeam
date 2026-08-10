@@ -13,7 +13,7 @@ import SortControls from '../components/SortControls'
 import { money, amountColor, signedColor, lineTotal, qtyOf } from '../lib/format'
 import { projectAccounts, projectBudgets, newlyNegative, newlyOver as newlyOverOf } from '../domain/simulation'
 import { sortRows } from '../domain/shopping'
-import { goalImpact } from '../domain/goals'
+import { goalImpact, goalsAfterPlan } from '../domain/goals'
 
 import { OPEN_STATUSES } from '../domain/constants'
 
@@ -74,7 +74,7 @@ export default function Simulation() {
         fetchCached('budgets', { seasonId: activeId }),
         supabase.from('ledger_lines_full').select('amount,budget_id,team_scope,category_id,season_id,tx_team_scope').eq('season_id', activeId),
         supabase.from('account_balances').select('*'),
-        supabase.from('savings_goals').select('reserved,team_scope').eq('season_id', activeId),
+        supabase.from('savings_goals').select('id,name,target,reserved,team_scope,archived_at,target_date'),
       ]))
       if (!it.error) setItems(it.data || [])
       if (!bg.error) setBudgets(bg.data || [])
@@ -168,6 +168,15 @@ export default function Simulation() {
     () => goalImpact(plannedSpend, balances.reduce((s0, b) => s0 + (Number(b.balance) || 0), 0),
       goals.filter((g) => ts.matches(g.team_scope))),
     [plannedSpend, balances, goals, ts])
+
+  // Per goal, not just a total: planning is where someone chooses between a
+  // purchase and a goal, and that choice needs the goals named.
+  const goalsNow = useMemo(
+    () => goals.filter((g) => ts.matches(g.team_scope) && !g.archived_at),
+    [goals, ts])
+  const goalOutlook = useMemo(
+    () => goalsAfterPlan(goalsNow, balances.reduce((s0, b) => s0 + (Number(b.balance) || 0), 0), plannedSpend),
+    [goalsNow, balances, plannedSpend])
 
   const pickAll = () => setPicked(new Set(priced.map((r) => r.id)))
   const pickNone = () => setPicked(new Set())
@@ -266,6 +275,43 @@ export default function Simulation() {
                 not a banner of its own. */}
           </ul>
         </div>
+      )}
+
+      {/* Goals as they stand after the plan. Reservations are reduced in
+          list order, not pro rata: if money runs short someone picks which
+          goal waits, and spreading the shortfall evenly would be a decision
+          nobody made. */}
+      {goalsNow.length > 0 && (
+        <>
+          <div className="section-title">{t('goalsAfterPlan')}</div>
+          <div className="panel table-wrap">
+            <table className="data">
+              <thead><tr>
+                <th>{t('name')}</th>
+                <th className="num">{t('target')}</th>
+                <th className="num">{t('reserved')}</th>
+                <th className="num">{t('afterPlan')}</th>
+                <th className="num">{t('shortBy')}</th>
+              </tr></thead>
+              <tbody>
+                {goalOutlook.rows.map((g) => (
+                  <tr key={g.id}>
+                    <td>{g.name}</td>
+                    <td className="num mono">{money(g.target)}</td>
+                    <td className="num mono">{money(g.reservedBefore)}</td>
+                    <td className="num mono" style={{ color: g.lost > 0 ? 'var(--danger)' : undefined }}>
+                      {money(g.reservedAfter)}{g.lost > 0 ? ` (-${money(g.lost)})` : ''}</td>
+                    <td className="num mono" style={{ color: g.metAfter ? 'var(--ok)' : undefined }}>
+                      {g.metAfter ? '✓' : money(g.shortAfter)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {/* The figure that answers "could we also start saving for X". */}
+          <p style={{ fontSize: 13, color: 'var(--text-dim)', margin: '8px 0 16px' }}>
+            {t('unclaimedAfterPlan').replace('{v}', money(goalOutlook.unclaimed))}</p>
+        </>
       )}
 
       <div className="section-title">{t('projectedBalances')}</div>

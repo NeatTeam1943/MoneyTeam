@@ -98,7 +98,7 @@ export default function Reports() {
         supabase.from('ledger_lines_full').select('transaction_id,amount,budget_id,description,team_scope,category_id,season_id,date,tx_team_scope').eq('season_id', activeId),
         fetchCached('budgets', { seasonId: activeId }),
         fetchCached('shopping_items', { seasonId: activeId }),
-        supabase.from('savings_goals').select('*').eq('season_id', activeId),
+        supabase.from('savings_goals').select('*'),
         supabase.from('account_balances').select('*'),
       ]))
       if (!tx.error) setRows(tx.data || [])

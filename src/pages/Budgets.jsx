@@ -12,6 +12,7 @@ import { money, lineTotal } from '../lib/format'
 import { buildBudgetRows, groupSiblings } from '../domain/budgets'
 import { buildOwnership } from '../domain/budgetOwnership'
 import { splitByExclusivity } from '../lib/teamScope'
+import { budgetFundingGap } from '../domain/goals'
 import { roundMoney } from '../domain/money'
 import { GROUPING, SCOPE, OPEN_STATUSES } from '../domain/constants'
 import { emptyCalcRow, rowTotal, calcTotal, cleanCalc, calcStatus } from '../domain/budgetCalc'
@@ -54,6 +55,8 @@ export default function Budgets() {
   const [budgets, setBudgets] = useState([])
   const [expenses, setExpenses] = useState([])
   const [shopping, setShopping] = useState([])
+  const [goals, setGoals] = useState([])
+  const [balances, setBalances] = useState([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(null)
   const [open, setOpen] = useState(false)
@@ -62,14 +65,19 @@ export default function Budgets() {
     if (!activeId) { setLoading(false); return }
     if (budgets.length === 0) setLoading(true)   // only spinner when nothing is showing yet
     try {
-      const [b, tl, sh] = await withTimeout(Promise.all([
+      const [b, tl, sh, gl, bal] = await withTimeout(Promise.all([
         fetchCached('budgets', { seasonId: activeId }),
         supabase.from('ledger_lines_full').select('amount,budget_id,team_scope,category_id,season_id,tx_team_scope').eq('season_id', activeId),
         supabase.from('shopping_items').select('est_price,quantity,category_id,status,team_scope').eq('season_id', activeId),
+          // Goals span seasons — deliberately no season filter.
+          supabase.from('savings_goals').select('reserved,team_scope,archived_at'),
+          supabase.from('account_balances').select('*'),
       ]))
       if (!b.error) setBudgets(b.data || [])
       if (!tl.error) setExpenses(tl.data || []) // expense LINES (each charges a budget)
       if (!sh.error) setShopping(sh.data || [])
+        if (!gl.error) setGoals(gl.data || [])
+        if (!bal.error) setBalances(bal.data || [])
     } catch (e) {
       if (e.message === 'timeout') toast.error(t('loadTimedOut'))
     } finally {
@@ -177,6 +185,17 @@ export default function Budgets() {
       plannedSplit, requestedSplit }
   }, [budgets, shopping, lk, ts])   // eslint-disable-line react-hooks/exhaustive-deps
 
+  // A budget is a CEILING and knows nothing about how much money exists.
+  // Reserving lowers no ceiling, so "remaining" keeps reporting permission the
+  // bank can no longer cover. Naming that gap is the point — the budgets are
+  // left alone, because a budget is a decision someone made and shrinking it
+  // silently would rewrite that decision and move overspend on its own.
+  const funding = useMemo(() => budgetFundingGap(
+    totals.remaining,
+    balances.reduce((s0, b) => s0 + (Number(b.balance) || 0), 0),
+    goals.filter((g) => ts.matches(g.team_scope) && !g.archived_at),
+  ), [totals, balances, goals, ts])
+
   const chartRows = useMemo(() => buildRows(categoryGrouping),
     [scopedBudgets, scopedExpenses, scopedShopping, budgetCat, lk, t, categoryGrouping])   // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -207,6 +226,28 @@ export default function Budgets() {
                 v={money(totals.plannedSplit.exclusive)} />
               <Stat k={t('budgetShared')} v={money(totals.plannedSplit.shared)} c="var(--text-dim)" />
             </>
+          )}
+        </div>
+      )}
+
+      {/* The figure the budgets page could not show: how much of the remaining
+          permission the bank actually covers once goals have taken their share.
+          Only rendered when there IS a gap. */}
+      {funding.unfunded > 0 && (
+        <div className="panel panel-pad" style={{ marginBottom: 18, borderInlineStart: '3px solid var(--orange)' }}>
+          <b>{t('unfundedBudget')}</b>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-dim)' }}>
+            {t('unfundedBudgetHint')
+              .replace('{r}', money(funding.budgetRemaining))
+              .replace('{s}', money(funding.spendable))
+              .replace('{v}', money(funding.unfunded))}
+          </p>
+          {/* Tell a gap the reservations caused apart from one that was already
+              there, or a goal gets blamed for a shortfall that predates it. */}
+          {funding.unfundedWithoutGoals > 0 && (
+            <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--text-faint)' }}>
+              {t('unfundedEvenWithoutGoals').replace('{v}', money(funding.unfundedWithoutGoals))}
+            </p>
           )}
         </div>
       )}

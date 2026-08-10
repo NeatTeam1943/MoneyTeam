@@ -11,6 +11,9 @@ import { useTeamScope } from '../context/TeamScopeContext'
 import { TeamScopeBadge } from '../components/TeamScope'
 import { money, amountColor, signedColor, lineTotal, qtyOf } from '../lib/format'
 import { projectAccounts, projectBudgets, newlyNegative, newlyOver as newlyOverOf } from '../domain/simulation'
+import { sortRows } from '../domain/shopping'
+import { goalImpact } from '../domain/goals'
+
 import { OPEN_STATUSES } from '../domain/constants'
 
 // What-if planner. It answers the question a mentor actually asks in front of
@@ -34,6 +37,7 @@ export default function Simulation() {
   const [budgets, setBudgets] = useState([])
   const [lines, setLines] = useState([])
   const [balances, setBalances] = useState([])
+  const [goals, setGoals] = useState([])
   const [loading, setLoading] = useState(true)
 
   // Everything the user builds up is one object, kept in localStorage so a trip
@@ -64,15 +68,17 @@ export default function Simulation() {
   async function load() {
     if (!activeId) { setLoading(false); return }
     try {
-      const [it, bg, tl, bal] = await withTimeout(Promise.all([
+      const [it, bg, tl, bal, gl] = await withTimeout(Promise.all([
         fetchCached('shopping_items', { seasonId: activeId }),
         fetchCached('budgets', { seasonId: activeId }),
         supabase.from('ledger_lines_full').select('amount,budget_id,team_scope,category_id,season_id,tx_team_scope').eq('season_id', activeId),
         supabase.from('account_balances').select('*'),
+        supabase.from('savings_goals').select('reserved,team_scope').eq('season_id', activeId),
       ]))
       if (!it.error) setItems(it.data || [])
       if (!bg.error) setBudgets(bg.data || [])
       if (!tl.error) setLines(tl.data || [])
+      if (!gl.error) setGoals(gl.data || [])
       if (!bal.error) setBalances(bal.data || [])
     } catch (e) {
       if (e.message === 'timeout') toast.error(t('loadTimedOut'))
@@ -97,6 +103,14 @@ export default function Simulation() {
   // returning user think items had vanished.
   const [fCategory, setFCategory] = useState('')
   const [fSearch, setFSearch] = useState('')
+  // Sortable like the shopping list. Not part of the scenario: it changes what
+  // you are looking at, not what you are planning.
+  const [sort, setSort] = useState({ col: 'priority', dir: 'asc', then: 'name', thenDir: 'asc' })
+  function toggleSort(col) {
+    setSort((s0) => (s0.col === col
+      ? { ...s0, col, dir: s0.dir === 'asc' ? 'desc' : 'asc' }
+      : { ...s0, col, dir: 'asc' }))
+  }
 
   const guessPrice = scenario.guessPrice || {}
   const setGuess = (id, v) =>
@@ -121,8 +135,15 @@ export default function Simulation() {
     })
   }, [open, fCategory, fSearch, lk])
 
-  const priced = useMemo(() => visible.filter((r) => cost(r) > 0), [visible, guessPrice])
-  const unpriced = useMemo(() => visible.filter((r) => cost(r) <= 0), [visible, guessPrice])
+  // The same comparator the shopping list uses, so "sort by category" means the
+  // same thing on both screens rather than two near-identical implementations.
+  const sorted = useMemo(() => sortRows(visible, sort, {
+    rankOf: Object.fromEntries(lk.levels.map((l) => [l.id, l.rank])),
+    statusLabel: t,
+  }), [visible, sort, lk.levels, t])
+
+  const priced = useMemo(() => sorted.filter((r) => cost(r) > 0), [sorted, guessPrice])
+  const unpriced = useMemo(() => sorted.filter((r) => cost(r) <= 0), [sorted, guessPrice])
 
   const selected = useMemo(() => open.filter((r) => picked.has(r.id)), [open, picked])
   const accountFor = (id) => fundBy[id] || fundFrom
@@ -133,6 +154,20 @@ export default function Simulation() {
   const plannedIncome = useMemo(() => incomes.reduce((s, r) => s + (Number(r.amount) || 0), 0), [incomes])
 
   const toggle = (id) => setPicked((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const SortTh = ({ col, label, num }) => (
+    <th onClick={() => toggleSort(col)} className={num ? 'num' : undefined}
+      style={{ cursor: 'pointer' }}>
+      {label}{sort.col === col ? (sort.dir === 'asc' ? ' ↑' : ' ↓') : ''}
+    </th>
+  )
+
+  // Reserved money is neither a budget nor a request, so it is not added to
+  // either total — it only changes what "available" means.
+  const impact = useMemo(
+    () => goalImpact(plannedSpend, balances.reduce((s0, b) => s0 + (Number(b.balance) || 0), 0),
+      goals.filter((g) => ts.matches(g.team_scope))),
+    [plannedSpend, balances, goals, ts])
+
   const pickAll = () => setPicked(new Set(priced.map((r) => r.id)))
   const pickNone = () => setPicked(new Set())
   const pickByLevel = (levelId) => setPicked(new Set(priced.filter((r) => r.priority_level_id === levelId).map((r) => r.id)))
@@ -210,15 +245,24 @@ export default function Simulation() {
         <Stat k={t('plannedIncome')} v={money(plannedIncome)} c="var(--in)" />
         <Stat k={t('projectedTotal')} v={money(totalAfter)} c={amountColor(totalAfter)} />
         <Stat k={t('itemsPicked')} v={`${selected.length}/${priced.length}`} c="var(--text)" />
+        {impact.reserved > 0 && (
+          <Stat k={t('availableAfterGoals')} v={money(impact.available)}
+            c={impact.intrudes ? 'var(--danger)' : 'var(--ok)'} />
+        )}
       </div>
 
-      {(goingNegative.length > 0 || newlyOver.length > 0 || unbudgeted.length > 0) && (
+      {(goingNegative.length > 0 || newlyOver.length > 0 || unbudgeted.length > 0 || impact.intrudes) && (
         <div className="panel panel-pad" style={{ borderColor: 'var(--danger)', marginTop: 14 }}>
           <div className="section-title" style={{ marginTop: 0, color: 'var(--danger)' }}>{t('whatBreaks')}</div>
           <ul style={{ margin: 0, paddingInlineStart: 18, fontSize: 13, lineHeight: 1.9 }}>
             {goingNegative.map((a) => <li key={a.id}>{t('accountGoesNegative').replace('{a}', a.name).replace('{v}', money(a.after))}</li>)}
             {newlyOver.map((b) => <li key={b.id}>{t('budgetGoesOver').replace('{b}', b.label).replace('{v}', money(b.after - b.amount))}</li>)}
             {unbudgeted.length > 0 && <li>{t('itemsWithNoBudget').replace('{n}', unbudgeted.length)}</li>}
+            {/* One more thing this plan costs, so it belongs in the same
+                list as the other consequences rather than a banner. */}
+            {impact.intrudes && <li>{t('planHitsGoals').replace('{v}', money(impact.intrusion))}</li>}
+            {/* One more thing this plan costs, in the same list as the rest —
+                not a banner of its own. */}
           </ul>
         </div>
       )}
@@ -318,6 +362,22 @@ export default function Simulation() {
 
       <div className="section-title">{t('pickItems')}</div>
       <div className="toolbar">
+        {/* The filter state and logic existed but nothing rendered these,
+            so there was no way to pick a category — the feature was
+            unreachable rather than missing. */}
+        <select value={fCategory} onChange={(e) => setFCategory(e.target.value)}>
+          <option value="">{t('category')}: {t('all')}</option>
+          {lk.categoryTree.map((c) => (
+            <option key={c.id} value={c.id}>{c.path || c.name}</option>
+          ))}
+        </select>
+        <input value={fSearch} onChange={(e) => setFSearch(e.target.value)}
+          placeholder={t('searchShopping')}
+          style={{ flex: '1 1 9rem', minWidth: '7rem' }} />
+        {(fSearch || fCategory) && (
+          <button className="btn btn-ghost btn-sm"
+            onClick={() => { setFSearch(''); setFCategory('') }}>✕</button>
+        )}
         <select value={fundFrom} onChange={(e) => { setFundFrom(e.target.value); setFundBy({}) }}
           title={t('defaultFundHint')}>
           {lk.accountsActive.map((a) => <option key={a.id} value={a.id}>{t('defaultFund')}: {a.name}</option>)}
@@ -332,11 +392,14 @@ export default function Simulation() {
       <div className="panel table-wrap">
         <table className="data">
           <thead><tr>
-            <th></th><th>{t('name')}</th><th>{t('teamScope')}</th><th>{t('category')}</th>
-            <th>{t('priority')}</th>
-            <th className="num">{t('unitPrice')}</th>
+            <th></th>
+            <SortTh col="name" label={t('name')} />
+            <th>{t('teamScope')}</th>
+            <SortTh col="category" label={t('category')} />
+            <SortTh col="priority" label={t('priority')} />
+            <SortTh col="est_price" label={t('unitPrice')} num />
             <th className="num">{t('unitCount')}</th>
-            <th className="num">{t('total')}</th>
+            <SortTh col="total" label={t('total')} num />
             <th>{t('fundFrom')}</th>
           </tr></thead>
           <tbody>

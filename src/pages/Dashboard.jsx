@@ -10,6 +10,7 @@ import { useSeason } from '../context/SeasonContext'
 import { useAuth } from '../context/AuthContext'
 import { useI18n } from '../lib/i18n'
 import { useLookups } from '../lib/useLookups'
+import { spendableAfterGoals } from '../domain/goals'
 import { money, monthKey, typeColor, amountColor } from '../lib/format'
 import { useTeamScope } from '../context/TeamScopeContext'
 import { linesByTransaction, attributableAmount, touchesScope, exclusiveVsShared } from '../lib/teamScope'
@@ -34,6 +35,7 @@ export default function Dashboard() {
   const [allRows, setAllRows] = useState([])
   const [balances, setBalances] = useState([])
   const [opening, setOpening] = useState(null)
+  const [goals, setGoals] = useState([])
   const [budgets, setBudgets] = useState([])
   const [waitingRows, setWaitingRows] = useState([])
   const [allLines, setAllLines] = useState([])
@@ -53,6 +55,8 @@ export default function Dashboard() {
     // What the accounts held the day this season opened. Derived, not
     // stored: the sum of every approved movement before the start date,
     // so it cannot drift when someone back-dates a transaction.
+    supabase.from('savings_goals').select('reserved,team_scope').eq('season_id', activeId)
+      .then(({ data, error }) => { if (!error) setGoals(data || []) })
     supabase.rpc('season_opening_balances', { p_season_id: activeId })
       .then(({ data, error }) => { if (!error) setOpening(data || []) })
     if (isParent) return
@@ -108,6 +112,13 @@ export default function Dashboard() {
     () => (opening ? opening.reduce((s, b) => s + (Number(b.balance) || 0), 0) : null),
     [opening])
 
+  // Reserved money is a third quantity — not a budget, not a request — so it
+  // is shown by subtracting it from what can be spent rather than folded into
+  // either total.
+  const spendable = useMemo(
+    () => spendableAfterGoals(cashOnHand, goals.filter((g) => ts.matches(g.team_scope))),
+    [cashOnHand, goals, ts])
+
   const overBudget = useMemo(() => overBudgetOf({
     budgets, allRows, allLines, matchesTeam: ts.matches, allProgramsShown: ts.all,
     // Needed so a parent pot does not re-count its children's overspend.
@@ -146,6 +157,10 @@ export default function Dashboard() {
             nothing", which is not true. */}
         {openingTotal !== null && (
           <Stat k={t('openingBalance')} v={money(openingTotal)} c="var(--text-dim)" />
+        )}
+        {spendable.reserved > 0 && (
+          <Stat k={t('availableAfterGoals')} v={money(spendable.available)}
+            c={spendable.overReserved ? 'var(--danger)' : 'var(--ok)'} />
         )}
         <Stat k={t('balanceOnHand')} v={money(cashOnHand)}
           c={cashOnHand < 0 ? 'var(--danger)' : 'var(--ok)'} />

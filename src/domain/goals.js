@@ -55,3 +55,48 @@ export function daysUntil(dateStr, today = new Date()) {
   if (Number.isNaN(d.getTime())) return null
   return Math.round((d - today) / 86400000)
 }
+
+/**
+ * Money that is free to spend: the balance less what goals have reserved.
+ *
+ * Deliberately NOT modelled as a budget or as a request. Those words already
+ * mean specific things — a budget is a ceiling on spending, a request is an
+ * item waiting on the shopping list — and folding reserved money into either
+ * would move numbers nobody changed: "total planned budget" would grow without
+ * anyone raising a ceiling, and overspend would shift because its denominator
+ * moved. A goal is also not an item, and the shopping list is where requests
+ * come from, so it cannot honestly be counted there either.
+ *
+ * Reserved is a third quantity, and the honest way to show it is to subtract it
+ * from what is spendable and say so.
+ */
+export function spendableAfterGoals(balance, goals) {
+  const reserved = (goals || []).reduce((s, g) => s + (Number(g.reserved) || 0), 0)
+  const bal = Number(balance) || 0
+  return {
+    balance: bal,
+    reserved,
+    // Never negative: a naive subtraction would print a negative amount of
+    // money that can be spent, which is not a thing.
+    available: Math.max(0, bal - reserved),
+    overReserved: reserved > bal,
+  }
+}
+
+/**
+ * Whether a plan would eat into money set aside for goals.
+ *
+ * Not a block: a team may legitimately decide a purchase matters more than a
+ * goal. But it must be a decision rather than an accident, which means the
+ * screen has to say it.
+ */
+export function goalImpact(plannedSpend, balance, goals) {
+  const { available, reserved } = spendableAfterGoals(balance, goals)
+  const spend = Number(plannedSpend) || 0
+  return {
+    available,
+    reserved,
+    intrudes: spend > available,
+    intrusion: Math.max(0, spend - available),
+  }
+}

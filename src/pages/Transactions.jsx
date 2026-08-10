@@ -410,25 +410,11 @@ export default function Transactions() {
             { label: t('source'), value: detail.sourceName },
             {
               label: t('category'),
-              // Per line, with its program and amount. The header's combined
-              // "א + ב" says which categories were involved but not how much
-              // went to each — which is the question a preview is opened to
-              // answer.
-              value: (() => {
-                const own = txLines[detail.id] || []
-                if (own.length <= 1) return detail.categoryLabel
-                return (
-                  <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 3 }}>
-                    {own.map((l) => (
-                      <span key={l.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                        <TeamScopeBadge scope={l.team_scope} />
-                        <span>{lk.categoryName[l.category_id] || budgetLabel(l.budget_id) || '—'}</span>
-                        <span className="mono" style={{ color: 'var(--text-dim)' }}>{money(l.amount)}</span>
-                      </span>
-                    ))}
-                  </span>
-                )
-              })(),
+              // Single-line only. A split purchase gets a real table below, where
+              // each category sits on its own row beside its own amount —
+              // collapsing them here made the categories a separate list from the
+              // figures they describe.
+              value: (txLines[detail.id] || []).length > 1 ? null : detail.categoryLabel,
             },
             !isParent && { label: t('payer'), value: detail.payer_display },
             { label: t('notes'), value: detail.notes, style: { whiteSpace: 'pre-wrap' } },
@@ -439,10 +425,19 @@ export default function Transactions() {
                   header amount says nothing about which programs it covered. */}
               <div className="section-title">{t('lines')}</div>
               <table className="data">
+                <thead><tr>
+                  <th>{t('description')}</th>
+                  <th>{t('category')}</th>
+                  <th>{t('teamScope')}</th>
+                  <th className="num">{t('amount')}</th>
+                </tr></thead>
                 <tbody>
                   {(txLines[detail.id] || []).map((l) => (
                     <tr key={l.id}>
-                      <td>{l.description || budgetLabel(l.budget_id)}</td>
+                      <td>{l.description || '—'}</td>
+                      {/* On the row itself: the question is "what was this line
+                          for", and the answer belongs beside its own amount. */}
+                      <td>{lk.categoryName[l.category_id] || budgetLabel(l.budget_id) || '—'}</td>
                       <td><TeamScopeBadge scope={l.team_scope} /></td>
                       <td className="num mono">{money(l.amount)}</td>
                     </tr>

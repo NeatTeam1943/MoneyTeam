@@ -561,7 +561,6 @@ export default function Shopping() {
             { label: t('category'),
               value: lk.categoryTree.find((c) => c.id === detail.category_id)?.path
                 || detail.categoryName || '—' },
-            { label: t('category'), value: detail.categoryName },
             { label: t('sku'), value: detail.sku, mono: true },
             { label: t('vendor'), value: detail.vendor },
             { label: t('unitPrice'), value: detail.est_price != null ? money(detail.est_price) : null, mono: true },

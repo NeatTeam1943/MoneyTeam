@@ -15,6 +15,7 @@ import { buildOwnership } from '/tmp/A_budgetOwnership.mjs'
 import { totalsOf, overBudgetOf } from '/tmp/A_ledger.mjs'
 import { linesByTransaction, attributableAmount, touchesScope, spendByScope, exclusiveVsShared, splitByExclusivity } from '/tmp/A_ts.mjs'
 import { projectBudgets, newlyOver } from '/tmp/A_simulation.mjs'
+import { spendableAfterGoals, goalImpact } from '/tmp/A_goals.mjs'
 
 const f = (n) => Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 let fails = 0
@@ -202,7 +203,24 @@ for (const [lbl, picked, wantEx, wantSh] of [
 // One definition, so the three cannot drift apart.
 {
   {
-  console.log('\n=== overspend is per pot, and a 0 pot is a real ceiling ===')
+  {
+  console.log('\n=== reserved money is a THIRD quantity ===')
+  const goals = [{ reserved: 5000 }, { reserved: 4000 }]
+  const sp = spendableAfterGoals(17631.95, goals)
+  check('available = balance - reserved', sp.available, 8631.95)
+  check('reserved is reported, not folded away', sp.reserved, 9000)
+  check('a plan inside the free money does not intrude',
+    goalImpact(5000, 17631.95, goals).intrusion, 0)
+  check('a plan beyond it reports the exact shortfall',
+    goalImpact(12000, 17631.95, goals).intrusion, 3368.05)
+
+  // A naive subtraction here would print a negative amount of spendable money.
+  const broke = spendableAfterGoals(3000, goals)
+  check('available never goes below zero', broke.available, 0)
+  check('and over-reservation is flagged', broke.overReserved ? 1 : 0, 1)
+}
+
+console.log('\n=== overspend is per pot, and a 0 pot is a real ceiling ===')
   const pOf = { ROBOT: null, TOOLS: null }
   const run = (bs, ls) => overBudgetOf({
     budgets: bs, allRows: [], allLines: ls,

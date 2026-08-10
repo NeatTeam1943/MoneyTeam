@@ -49,6 +49,14 @@ export default function Goals() {
     [goals, ts, showArchived])
   const summary = useMemo(() => goalsSummary(shown, cash), [shown, cash])
 
+  const decide = async (g, approve) => {
+    const { error } = await supabase.rpc('decide_goal_reservation', {
+      p_goal_id: g.id, p_approve: approve,
+    })
+    if (error) { window.alert(error.message); return }
+    load()
+  }
+
   const archive = async (g) => {
     await supabase.from('savings_goals')
       .update({ archived_at: g.archived_at ? null : new Date().toISOString() })
@@ -67,6 +75,11 @@ export default function Goals() {
   return (
     <div>
       <p style={{ color: 'var(--text-faint)', fontSize: 13, marginTop: 0 }}>{t('goalsHint')}</p>
+      {/* Says who may do what, so a missing button is explained rather than
+          looking like something is broken. */}
+      {!isMentor && canPropose && (
+        <p style={{ color: 'var(--text-faint)', fontSize: 12, marginTop: -8 }}>{t('goalsWhoCan')}</p>
+      )}
 
       <div className="stats" style={{ marginBottom: 18 }}>
         <Stat k={t('moneyAvailable')} v={money(cash)} />
@@ -148,6 +161,27 @@ export default function Goals() {
                 </div>
               )}
 
+              {/* A pending reservation is shown as a request, never folded into
+                  the progress bar — the bar tracks committed money, and a
+                  proposal is not committed. */}
+              {g.reserved_proposed != null && (
+                <div style={{
+                  marginTop: 8, padding: '6px 8px', borderRadius: 6,
+                  background: 'var(--bg-1)', fontSize: 13,
+                  display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap',
+                }}>
+                  <span>{t('reserveProposed').replace('{v}', money(g.reserved_proposed))}</span>
+                  {isMentor ? (
+                    <>
+                      <button className="btn btn-sm btn-primary" onClick={() => decide(g, true)}>{t('approve')}</button>
+                      <button className="btn btn-sm" onClick={() => decide(g, false)}>{t('reject')}</button>
+                    </>
+                  ) : (
+                    <span style={{ color: 'var(--text-faint)' }}>{t('awaitingMentor')}</span>
+                  )}
+                </div>
+              )}
+
               {p.overReserved && (
                 <div style={{ fontSize: 12, color: 'var(--danger)', marginTop: 4 }}>{t('reservedBeyondCash')}</div>
               )}
@@ -156,7 +190,7 @@ export default function Goals() {
                 <p style={{ fontSize: 12, color: 'var(--text-faint)', margin: '8px 0 0', whiteSpace: 'pre-wrap' }}>{g.notes}</p>
               )}
 
-              {isMentor && (
+              {canPropose && (
                 <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   <button className="btn btn-ghost btn-sm" onClick={() => { setEditing(g); setShowForm(true) }}>{t('edit')}</button>
                   {/* Archiving, not deleting: a goal that was reached is part of
@@ -165,7 +199,12 @@ export default function Goals() {
                   <button className="btn btn-ghost btn-sm" onClick={() => archive(g)}>
                     {g.archived_at ? t('unarchive') : t('archive')}
                   </button>
-                  <button className="btn btn-ghost btn-sm btn-danger" onClick={() => remove(g)}>{t('delete')}</button>
+                  {/* Removing a goal others are working toward is disruptive and
+                      cannot be undone from the UI. Archiving is the reversible
+                      version and is open to everyone. */}
+                  {isMentor && (
+                    <button className="btn btn-ghost btn-sm btn-danger" onClick={() => remove(g)}>{t('delete')}</button>
+                  )}
                 </div>
               )}
             </div>
@@ -205,6 +244,7 @@ function GoalForm({ editing, seasonId, categories, canSetReserved, onClose, onSa
     category_id: editing?.category_id || '',
     team_scope: editing?.team_scope || 'both',
     reserved: editing?.reserved ?? 0,
+    reserved_proposed: editing?.reserved_proposed ?? '',
     notes: editing?.notes || '',
   }))
   const [busy, setBusy] = useState(false)
@@ -228,7 +268,15 @@ function GoalForm({ editing, seasonId, categories, canSetReserved, onClose, onSa
       notes: f.notes || null,
       // Only a mentor may move reserved money; for anyone else it keeps its
       // current value rather than being silently reset to 0.
-      ...(canSetReserved ? { reserved: Number(f.reserved) || 0 } : {}),
+      // Omitted entirely for non-mentors: sending the current value back would
+      // trip the trigger on a no-op, and sending 0 would wipe a mentor's
+      // reservation as a side effect of someone fixing a typo.
+      // `reserved` is omitted entirely for non-mentors rather than echoed back:
+      // sending it would trip the guard on a no-op, and sending 0 would wipe a
+      // mentor's reservation as a side effect of fixing a typo.
+      ...(canSetReserved
+        ? { reserved: Number(f.reserved) || 0 }
+        : { reserved_proposed: f.reserved_proposed === '' ? null : Number(f.reserved_proposed) }),
     }
     const res = editing
       ? await supabase.from('savings_goals').update(payload).eq('id', editing.id)
@@ -254,11 +302,22 @@ function GoalForm({ editing, seasonId, categories, canSetReserved, onClose, onSa
         <div className="field"><label>{t('targetDate')}</label>
           <DateField value={f.target_date} onChange={set('target_date')} /></div>
       </div>
-      {canSetReserved && (
+      {/* Hidden for non-mentors, and refused by a trigger regardless — the
+          hidden field is the courtesy, the trigger is the rule. */}
+      {canSetReserved ? (
         <div className="field">
           <label>{t('reserved')} (₪)</label>
           <input type="number" step="0.01" value={f.reserved} onChange={set('reserved')} />
           <p style={{ fontSize: 12, color: 'var(--text-faint)', margin: '4px 0 0' }}>{t('reservedHint')}</p>
+        </div>
+      ) : (
+        // Not a disabled field: asking is a real action, and a greyed-out box
+        // says "not for you" where the truth is "yours to request".
+        <div className="field">
+          <label>{t('proposeReserve')} (₪)</label>
+          <input type="number" step="0.01" value={f.reserved_proposed}
+            onChange={set('reserved_proposed')} />
+          <p style={{ fontSize: 12, color: 'var(--text-faint)', margin: '4px 0 0' }}>{t('proposeReserveHint')}</p>
         </div>
       )}
       <div className="field"><label>{t('teamScope')}</label>

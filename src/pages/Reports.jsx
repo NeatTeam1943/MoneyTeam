@@ -13,6 +13,7 @@ import { useTeamScope } from '../context/TeamScopeContext'
 import { linesByTransaction, attributableAmount, touchesScope, spendByScope, exclusiveVsShared } from '../lib/teamScope'
 import ScopeNotice from '../components/ScopeNotice'
 import ShareTable from '../components/ShareTable'
+import { goalProgress, goalsSummary } from '../domain/goals'
 import {
   totalsOf, byMonthOf, cumulativeOf, byCategoryOf, bySourceOf,
   byVendorOf, byAccountOf, topExpensesOf,
@@ -74,6 +75,8 @@ export default function Reports() {
   const [lines, setLines] = useState([])
   const [budgets, setBudgets] = useState([])
   const [shopping, setShopping] = useState([])
+  const [goals, setGoals] = useState([])
+  const [balances, setBalances] = useState([])
   const [loading, setLoading] = useState(true)
 
   const [preset, setPreset] = useState('season')
@@ -90,16 +93,20 @@ export default function Reports() {
     if (!activeId) { setLoading(false); return }
     if (rows.length === 0) setLoading(true)
     try {
-      const [tx, tl, bg, sh] = await withTimeout(Promise.all([
+      const [tx, tl, bg, sh, gl, bal] = await withTimeout(Promise.all([
         supabase.from('ledger_transactions').select('*').eq('season_id', activeId),
         supabase.from('ledger_lines_full').select('transaction_id,amount,budget_id,description,team_scope,category_id,season_id,date,tx_team_scope').eq('season_id', activeId),
         fetchCached('budgets', { seasonId: activeId }),
         fetchCached('shopping_items', { seasonId: activeId }),
+        supabase.from('savings_goals').select('*').eq('season_id', activeId),
+        supabase.from('account_balances').select('*'),
       ]))
       if (!tx.error) setRows(tx.data || [])
       if (!tl.error) setLines(tl.data || [])
       if (!bg.error) setBudgets(bg.data || [])
       if (!sh.error) setShopping(sh.data || [])
+      if (!gl.error) setGoals(gl.data || [])
+        if (!bal.error) setBalances(bal.data || [])
     } catch (e) {
       if (e.message === 'timeout') toast.error(t('loadTimedOut'))
     } finally { setLoading(false) }
@@ -175,6 +182,16 @@ export default function Reports() {
   }).filter((r) => r.amount > 0 || r.spent > 0),
     [budgets, lines, shopping, lk, t, ts])
 
+  // Goals respect the program filter like everything else, and the balance they
+  // are measured against is the season's — a goal is funded from the accounts,
+  // not from the date range this report happens to be showing.
+  const shownGoals = useMemo(
+    () => goals.filter((g) => ts.matches(g.team_scope)), [goals, ts])
+  const cashForGoals = useMemo(
+    () => balances.reduce((s, b) => s + (Number(b.balance) || 0), 0), [balances])
+  const goalTotals = useMemo(
+    () => goalsSummary(shownGoals, cashForGoals), [shownGoals, cashForGoals])
+
   const budgetChart = useMemo(
     () => budgetRows.map((r) => ({ name: r.label, [t('spent')]: r.spent, [t('budget')]: r.amount })),
     [budgetRows, t])
@@ -207,6 +224,21 @@ export default function Reports() {
         Description: r.description || '',
         Account: lk.accountName[r.account_id] || '',
       })),
+      // Same figures as the on-screen table, so the two cannot disagree.
+      goals: shownGoals.map((g) => {
+        const p = goalProgress(g, cashForGoals)
+        return {
+          Name: g.name,
+          Program: g.team_scope || 'both',
+          Target: p.target,
+          Reserved: p.reserved,
+          'Short by': p.short,
+          Percent: Math.round(p.pct),
+          'Target date': g.target_date ? fmtDate(g.target_date) : '',
+          Category: lk.categoryName[g.category_id] || '',
+          Notes: g.notes || '',
+        }
+      }),
     })
   }
 
@@ -353,6 +385,55 @@ export default function Reports() {
               </BarChart>
             </ResponsiveContainer>
           </Chart>
+
+          {/* Goals are a claim on money the rest of this report treats as free,
+              so a report without them overstates what is available. Shown as a
+              table rather than a chart: a target and its progress are two
+              numbers per row, and a bar chart of four goals says less than the
+              figures do. */}
+          {shownGoals.length > 0 && (
+            <div className="panel panel-pad" style={{ marginTop: 16 }}>
+              <div className="section-title" style={{ marginTop: 0, marginBottom: 2 }}>{t('goals')}</div>
+              <p style={{ color: 'var(--text-faint)', fontSize: 12, margin: '0 0 8px' }}>{t('noteGoals')}</p>
+              <table className="data">
+                <thead><tr>
+                  <th>{t('name')}</th>
+                  <th className="num">{t('target')}</th>
+                  <th className="num">{t('reserved')}</th>
+                  <th className="num">{t('shortBy')}</th>
+                  <th className="num">%</th>
+                  <th>{t('targetDate')}</th>
+                </tr></thead>
+                <tbody>
+                  {shownGoals.map((g) => {
+                    const p = goalProgress(g, cashForGoals)
+                    return (
+                      <tr key={g.id}>
+                        <td>{g.name}</td>
+                        <td className="num mono">{money(p.target)}</td>
+                        <td className="num mono">{money(p.reserved)}</td>
+                        <td className="num mono" style={{ color: p.met ? 'var(--ok)' : undefined }}>
+                          {money(p.short)}</td>
+                        <td className="num mono">{Math.round(p.pct)}%</td>
+                        <td>{g.target_date ? fmtDate(g.target_date) : '—'}</td>
+                      </tr>
+                    )
+                  })}
+                  <tr style={{ fontWeight: 700 }}>
+                    <td>{t('total')}</td>
+                    <td className="num mono">{money(goalTotals.target)}</td>
+                    <td className="num mono">{money(goalTotals.reserved)}</td>
+                    <td className="num mono">{money(goalTotals.stillNeeded)}</td>
+                    <td colSpan={2} />
+                  </tr>
+                </tbody>
+              </table>
+              {goalTotals.overCommitted > 0 && (
+                <p style={{ color: 'var(--danger)', fontSize: 13, margin: '8px 0 0' }}>
+                  {t('overCommittedHint').replace('{v}', money(goalTotals.overCommitted))}</p>
+              )}
+            </div>
+          )}
 
           {requestedChart.length > 0 && (
             <Chart title={t('requestedByCategory')} note={t('noteRequested')}>

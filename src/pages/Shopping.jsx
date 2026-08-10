@@ -13,6 +13,7 @@ import ShoppingForm from '../components/ShoppingForm'
 import TransactionForm from '../components/TransactionForm'
 import { useTeamScope } from '../context/TeamScopeContext'
 import { TeamScopeBadge } from '../components/TeamScope'
+import SortControls from '../components/SortControls'
 import DetailPanel from '../components/DetailPanel'
 import { filterRows, sortRows } from '../domain/shopping'
 import { splitByExclusivity } from '../lib/teamScope'
@@ -418,13 +419,14 @@ export default function Shopping() {
         </select>
         {/* Tie-breaker for the primary sort: category alone left rows
             inside each category in arrival order. */}
-        <select value={sort.then || ''} onChange={(e) => setSort({ ...sort, then: e.target.value || null })}>
-          <option value="">{t('thenBy')}: —</option>
-          <option value="name">{t('name')}</option>
-          <option value="category">{t('category')}</option>
-          <option value="priority">{t('priority')}</option>
-          <option value="est_price">{t('unitPrice')}</option>
-        </select>
+        <SortControls sort={sort} setSort={setSort} columns={[
+          { col: 'name', label: t('name') },
+          { col: 'category', label: t('category') },
+          { col: 'priority', label: t('priority') },
+          { col: 'status', label: t('status') },
+          { col: 'est_price', label: t('unitPrice') },
+          { col: 'total', label: t('total') },
+        ]} />
         <div className="spacer" />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('searchShopping')}
           style={{ flex: '1 1 14rem', minWidth: '10rem' }} />

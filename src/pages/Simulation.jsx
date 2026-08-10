@@ -9,6 +9,7 @@ import { useToast } from '../lib/toast'
 import { useLookups } from '../lib/useLookups'
 import { useTeamScope } from '../context/TeamScopeContext'
 import { TeamScopeBadge } from '../components/TeamScope'
+import SortControls from '../components/SortControls'
 import { money, amountColor, signedColor, lineTotal, qtyOf } from '../lib/format'
 import { projectAccounts, projectBudgets, newlyNegative, newlyOver as newlyOverOf } from '../domain/simulation'
 import { sortRows } from '../domain/shopping'
@@ -378,6 +379,13 @@ export default function Simulation() {
           <button className="btn btn-ghost btn-sm"
             onClick={() => { setFSearch(''); setFCategory('') }}>✕</button>
         )}
+        <SortControls sort={sort} setSort={setSort} columns={[
+          { col: 'name', label: t('name') },
+          { col: 'category', label: t('category') },
+          { col: 'priority', label: t('priority') },
+          { col: 'est_price', label: t('unitPrice') },
+          { col: 'total', label: t('total') },
+        ]} />
         <select value={fundFrom} onChange={(e) => { setFundFrom(e.target.value); setFundBy({}) }}
           title={t('defaultFundHint')}>
           {lk.accountsActive.map((a) => <option key={a.id} value={a.id}>{t('defaultFund')}: {a.name}</option>)}

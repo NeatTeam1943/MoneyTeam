@@ -18,6 +18,7 @@ import { TX } from '../domain/constants'
 import ReceiptPreview from '../components/ReceiptPreview'
 import ApprovalQueue from '../components/ApprovalQueue'
 import DetailPanel from '../components/DetailPanel'
+import SortControls from '../components/SortControls'
 
 export default function Transactions() {
   const { t } = useI18n()
@@ -194,19 +195,34 @@ export default function Transactions() {
       }
       return true
     })
-    const { col, dir } = sort
-    out.sort((a, b) => {
-      let av = a[col], bv = b[col]
-      if (col === 'amount') { av = Number(av); bv = Number(bv) }
+    // Primary, then a tie-breaker. Sorting by category alone left every row
+    // inside a category in arrival order, so "category and then date" was not
+    // expressible — only one or the other.
+    const valueOf = (r, col) => {
+      if (col === 'amount') return Number(r[col]) || 0
+      if (col === 'category') return String(r.categoryLabel || '')
+      return r[col] ?? ''
+    }
+    const cmp = (a, b, col, dir) => {
+      const av = valueOf(a, col), bv = valueOf(b, col)
       if (av < bv) return dir === 'asc' ? -1 : 1
       if (av > bv) return dir === 'asc' ? 1 : -1
       return 0
+    }
+    out.sort((a, b) => {
+      const primary = cmp(a, b, sort.col, sort.dir)
+      if (primary !== 0) return primary
+      return sort.then ? cmp(a, b, sort.then, sort.thenDir || 'asc') : 0
     })
     return out
   }, [enriched, fType, fAccount, fCategory, fSource, from, to, q, sort, txCategoryIds, lk, ts])
 
   function toggleSort(col) {
-    setSort((s) => (s.col === col ? { col, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'asc' }))
+    // Spread first: building a fresh object dropped the secondary sort, so a
+    // header click silently undid the "then by" choice.
+    setSort((s) => (s.col === col
+      ? { ...s, col, dir: s.dir === 'asc' ? 'desc' : 'asc' }
+      : { ...s, col, dir: 'asc' }))
   }
 
   async function del(id) {
@@ -259,6 +275,13 @@ export default function Transactions() {
   return (
     <div>
       <div className="toolbar">
+        <SortControls sort={sort} setSort={setSort} columns={[
+          { col: 'date', label: t('date') },
+          { col: 'category', label: t('category') },
+          { col: 'amount', label: t('amount') },
+          { col: 'vendor', label: t('vendor') },
+          { col: 'description', label: t('description') },
+        ]} />
         <input className="grow" placeholder={t('search')} value={q} onChange={(e) => setQ(e.target.value)} />
         <select value={fType} onChange={(e) => setFType(e.target.value)}>
           <option value="">{t('type')}: {t('all')}</option>

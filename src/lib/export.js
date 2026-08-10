@@ -199,6 +199,13 @@ export function exportReport(meta) {
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(meta.cumulative || []), 'Cumulative')
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(meta.topExpenses || []), 'Top expenses')
 
+  // Goals belong in an exported report for the same reason they belong on the
+  // page: they are a claim on money the other sheets treat as free, so a report
+  // without them overstates what is available.
+  if (meta.goals?.length) {
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(meta.goals), 'Goals')
+  }
+
   const stamp = new Date().toISOString().slice(0, 10)
   const label = (meta.periodLabel || 'period').replace(/[^\w\u0590-\u05FF-]+/g, '_')
   XLSX.writeFile(wb, `frc-report_${label}_${stamp}.xlsx`)

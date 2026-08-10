@@ -255,7 +255,12 @@ export default function Simulation() {
         <Stat k={t('plannedIncome')} v={money(plannedIncome)} c="var(--in)" />
         <Stat k={t('projectedTotal')} v={money(totalAfter)} c={amountColor(totalAfter)} />
         <Stat k={t('itemsPicked')} v={`${selected.length}/${priced.length}`} c="var(--text)" />
-        {impact.reserved > 0 && (
+        {/* Shown whenever goals exist, not only once something is reserved.
+            A goal with a target and nothing set aside yet is the normal
+            starting state, and hiding the figure there meant the screen said
+            nothing about goals precisely when someone was deciding what to
+            reserve. */}
+        {goalsNow.length > 0 && (
           <Stat k={t('availableAfterGoals')} v={money(impact.available)}
             c={impact.intrudes ? 'var(--danger)' : 'var(--ok)'} />
         )}

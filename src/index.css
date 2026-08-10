@@ -488,7 +488,17 @@ html, body { max-width: 100%; overflow-x: hidden; }
   .line-row { grid-template-columns: 1fr auto; }
   .line-row > .line-desc, .line-row > .line-scope { grid-column: 1 / -1; }
   .content { padding: 14px 12px 44px; }
-  .topbar { padding: 10px 12px; gap: 8px; }
+  /* The topbar holds a season picker, two program chips, a theme toggle, a
+     language toggle, a name badge and sign-out. That cannot fit on one phone
+     line, and without wrapping the row simply ran off the inline-start edge —
+     which is the left in RTL, so the leftmost controls were cut off. */
+  .topbar {
+    padding: 10px 12px; gap: 8px;
+    flex-wrap: wrap; row-gap: 8px; justify-content: flex-start;
+  }
+  .topbar > * { min-width: 0; max-width: 100%; }
+  .topbar .spacer { display: none; }   /* a flex spacer would force a full wrap */
+  .topbar .badge { overflow-wrap: anywhere; }
   .topbar h1 { font-size: 1.05rem; }
 
   /* Two columns is the most that stays legible; the figures inside are
@@ -633,7 +643,13 @@ table.data td.desc-cell { min-width: 12rem; }
    The input keeps its size and stays fully interactive — tapping it opens the
    system picker — but its own text and indicator are hidden, because the
    browser renders those from the OS locale and nothing can change that. */
-.date-he { position: relative; display: inline-block; width: 100%; }
+.date-he {
+  position: relative; display: inline-block;
+  /* Not width:100%. In a flex toolbar that made each date field claim the
+     whole row, which is why they looked so odd next to the short selects. */
+  width: auto; min-width: 8.5rem; max-width: 11rem;
+}
+.toolbar .date-he { flex: 0 1 9.5rem; }
 .date-he > input[type="date"] {
   position: relative; z-index: 1; width: 100%;
   color: transparent;                 /* hide the browser's own mm/dd/yyyy */
@@ -648,7 +664,9 @@ table.data td.desc-cell { min-width: 12rem; }
 .date-he-text {
   position: absolute; inset: 0; z-index: 0;
   display: flex; align-items: center;
-  padding-inline: 11px;
+  /* Room for the browser's calendar icon, which sits at the inline-end. Our
+     overlay text ran underneath it and the two overlapped. */
+  padding-inline: 11px 2.2rem;
   font-family: var(--font-mono); font-size: 14px; color: var(--text);
   background: var(--field);
   border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
@@ -668,3 +686,40 @@ table.data td.desc-cell { min-width: 12rem; }
    category name was pushing the amount and percentage off the panel. */
 .share-table td:nth-child(2) { overflow-wrap: anywhere; }
 .share-table td.num { white-space: nowrap; width: 5.5rem; }
+
+
+/* Recharts paints a light overlay on the hovered/active slice or bar. On a
+   dark theme that reads as a bright white flash rather than a highlight. */
+[data-theme="neat"] .recharts-active-bar,
+[data-theme="neat"] .recharts-sector:hover,
+[data-theme="neat"] .recharts-rectangle.recharts-tooltip-cursor,
+[data-theme="neat"] .recharts-curve.recharts-tooltip-cursor {
+  fill: rgba(255, 255, 255, .08) !important;
+  stroke: var(--line-strong) !important;
+}
+[data-theme="neat"] .recharts-sector { stroke: var(--panel); }
+
+/* Figures scale with the card they sit in, not the viewport — the same reason
+   the stat cards use container queries. Applies to every table amount, which
+   on a phone were sized for a desktop column. */
+@container (max-width: 20rem) {
+  .num, .mono { font-size: 0.8125rem; }
+}
+@media (max-width: 560px) {
+  table.data .num, table.data .mono { font-size: 0.8125rem; }
+  .detail-row dd.mono { font-size: 0.875rem; }
+}
+
+/* Report-an-issue: present but never in the way. Sits with the nav rather
+   than floating over content, where it would cover a table row on a phone. */
+.report-issue {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-top: auto; padding: 8px 10px;
+  font-size: 12px; color: var(--text-faint); text-decoration: none;
+  border-top: 1px solid var(--line);
+}
+.report-issue:hover { color: var(--blue-text, var(--blue)); }
+@media (max-width: 900px) {
+  /* The sidebar is a scrolling row on a phone; the link joins the end of it. */
+  .report-issue { margin: 0; border-top: none; flex: 0 0 auto; white-space: nowrap; }
+}

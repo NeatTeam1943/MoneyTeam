@@ -4,6 +4,7 @@ import {
   PieChart, Pie, Cell, Legend,
 } from 'recharts'
 import { supabase } from '../lib/supabase'
+import { fetchCached } from '../lib/seasonCache'
 import { useRefreshOnReturn } from '../lib/useRefreshOnReturn'
 import { useSeason } from '../context/SeasonContext'
 import { useAuth } from '../context/AuthContext'
@@ -32,6 +33,7 @@ export default function Dashboard() {
   const ts = useTeamScope()
   const [allRows, setAllRows] = useState([])
   const [balances, setBalances] = useState([])
+  const [opening, setOpening] = useState(null)
   const [budgets, setBudgets] = useState([])
   const [waitingRows, setWaitingRows] = useState([])
   const [allLines, setAllLines] = useState([])
@@ -48,8 +50,13 @@ export default function Dashboard() {
       .then(({ data, error }) => { if (!error) setAllRows(data || []) })
     supabase.from(isParent ? 'account_balances_guest' : 'account_balances').select('*')
       .then(({ data, error }) => { if (!error) setBalances(data || []) })
+    // What the accounts held the day this season opened. Derived, not
+    // stored: the sum of every approved movement before the start date,
+    // so it cannot drift when someone back-dates a transaction.
+    supabase.rpc('season_opening_balances', { p_season_id: activeId })
+      .then(({ data, error }) => { if (!error) setOpening(data || []) })
     if (isParent) return
-    supabase.from('budgets').select('*').eq('season_id', activeId)
+    fetchCached('budgets', { seasonId: activeId })
       .then(({ data, error }) => { if (!error) setBudgets(data || []) })
     supabase.from('ledger_lines_full').select('transaction_id,amount,budget_id,team_scope,category_id,season_id,tx_team_scope').eq('season_id', activeId)
       .then(({ data, error }) => { if (!error) setAllLines(data || []) })
@@ -95,6 +102,12 @@ export default function Dashboard() {
   // does not arise.
   const split = useMemo(() => exclusiveVsShared(allRows, byTx, ts), [allRows, byTx, ts])
 
+  // Null until it loads, and null is not 0 — a season that genuinely opened at
+  // zero should say 0, while "not loaded" should show nothing at all.
+  const openingTotal = useMemo(
+    () => (opening ? opening.reduce((s, b) => s + (Number(b.balance) || 0), 0) : null),
+    [opening])
+
   const overBudget = useMemo(() => overBudgetOf({
     budgets, allRows, allLines, matchesTeam: ts.matches, allProgramsShown: ts.all,
     // Needed so a parent pot does not re-count its children's overspend.
@@ -131,6 +144,9 @@ export default function Dashboard() {
             much money is actually there". With no income yet this season the
             net is negative and correct — but on its own it reads as "we have
             nothing", which is not true. */}
+        {openingTotal !== null && (
+          <Stat k={t('openingBalance')} v={money(openingTotal)} c="var(--text-dim)" />
+        )}
         <Stat k={t('balanceOnHand')} v={money(cashOnHand)}
           c={cashOnHand < 0 ? 'var(--danger)' : 'var(--ok)'} />
         {split && (

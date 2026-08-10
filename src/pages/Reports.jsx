@@ -3,6 +3,7 @@ import DateField from '../components/DateField'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend,
   LineChart, Line, PieChart, Pie, Cell, ReferenceLine } from 'recharts'
 import { supabase, withTimeout } from '../lib/supabase'
+import { fetchCached } from '../lib/seasonCache'
 import { useAuth } from '../context/AuthContext'
 import { useSeason } from '../context/SeasonContext'
 import { useI18n } from '../lib/i18n'
@@ -92,8 +93,8 @@ export default function Reports() {
       const [tx, tl, bg, sh] = await withTimeout(Promise.all([
         supabase.from('ledger_transactions').select('*').eq('season_id', activeId),
         supabase.from('ledger_lines_full').select('transaction_id,amount,budget_id,description,team_scope,category_id,season_id,date,tx_team_scope').eq('season_id', activeId),
-        supabase.from('budgets').select('*').eq('season_id', activeId),
-        supabase.from('shopping_items').select('*').eq('season_id', activeId),
+        fetchCached('budgets', { seasonId: activeId }),
+        fetchCached('shopping_items', { seasonId: activeId }),
       ]))
       if (!tx.error) setRows(tx.data || [])
       if (!tl.error) setLines(tl.data || [])

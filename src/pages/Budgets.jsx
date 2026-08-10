@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts'
 import { supabase, withTimeout } from '../lib/supabase'
+import { fetchCached, mutate } from '../lib/seasonCache'
 import { useRefreshOnReturn } from '../lib/useRefreshOnReturn'
 import { useAuth } from '../context/AuthContext'
 import { useSeason } from '../context/SeasonContext'
@@ -62,7 +63,7 @@ export default function Budgets() {
     if (budgets.length === 0) setLoading(true)   // only spinner when nothing is showing yet
     try {
       const [b, tl, sh] = await withTimeout(Promise.all([
-        supabase.from('budgets').select('*').eq('season_id', activeId),
+        fetchCached('budgets', { seasonId: activeId }),
         supabase.from('ledger_lines_full').select('amount,budget_id,team_scope,category_id,season_id,tx_team_scope').eq('season_id', activeId),
         supabase.from('shopping_items').select('est_price,quantity,category_id,status,team_scope').eq('season_id', activeId),
       ]))
@@ -183,7 +184,7 @@ export default function Budgets() {
 
   async function del(id) {
     if (!confirm(t('confirmDelete'))) return
-    await supabase.from('budgets').delete().eq('id', id)
+    await mutate('budgets', (q) => q.delete().eq('id', id))
     toast.success(t('deleted')); load()
   }
 
@@ -401,8 +402,8 @@ function BudgetForm({ editing, seasonId, categoryTree, existing, onClose, onSave
     setErr(''); setBusy(true)
     const payload = { season_id: seasonId, category_id: categoryId || null, amount: Number(amount), team_scope: teamScope, calc: cleanCalc(calc) }
     const res = editing
-      ? await supabase.from('budgets').update(payload).eq('id', editing.id)
-      : await supabase.from('budgets').insert(payload)
+      ? await mutate('budgets', (q) => q.update(payload).eq('id', editing.id))
+      : await mutate('budgets', (q) => q.insert(payload))
     setBusy(false)
     if (res.error) { setErr(res.error.message); return }
     onSaved()

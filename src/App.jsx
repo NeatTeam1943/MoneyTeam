@@ -11,6 +11,7 @@ const Budgets = lazy(() => import('./pages/Budgets'))
 const Shopping = lazy(() => import('./pages/Shopping'))
 const Reports = lazy(() => import('./pages/Reports'))
 const Simulation = lazy(() => import('./pages/Simulation'))
+const Goals = lazy(() => import('./pages/Goals'))
 const Settings = lazy(() => import('./pages/Settings'))
 
 export default function App() {
@@ -60,6 +61,7 @@ export default function App() {
             <Route path="/shopping" element={<Shopping />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/simulation" element={<Simulation />} />
+            <Route path="/goals" element={<Goals />} />
             <Route path="/settings" element={<Settings />} />
           </>}
           <Route path="*" element={<Navigate to="/" replace />} />

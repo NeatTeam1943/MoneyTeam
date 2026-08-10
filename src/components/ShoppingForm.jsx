@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { mutate } from '../lib/seasonCache'
 import { useI18n } from '../lib/i18n'
 import { money } from '../lib/format'
 import { lineTotalOf } from '../domain/money'
@@ -89,8 +90,8 @@ export default function ShoppingForm({ editing, seasonId, categoryTree, vendorsA
     else if (!editing) payload.status = 'pending_approval'
 
     const res = editing
-      ? await supabase.from('shopping_items').update(payload).eq('id', editing.id)
-      : await supabase.from('shopping_items').insert(payload)
+      ? await mutate('shopping_items', (q) => q.update(payload).eq('id', editing.id))
+      : await mutate('shopping_items', (q) => q.insert(payload))
     setBusy(false)
     if (res.error) { setErr(res.error.message); return }
     onSaved()

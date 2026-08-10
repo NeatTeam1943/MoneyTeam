@@ -84,6 +84,23 @@ const ownedRef = (id, map) => {
   return out
 }
 
+// Nearest pot covering a category, preferring the row's own program — the same
+// walk resolveBudget() does.
+function resolveRef(categoryId, scope) {
+  const parentOfCat = Object.fromEntries(D.cats.map((c) => [c.id, c.parent_id]))
+  let cur = categoryId
+  while (cur) {
+    const pots = D.budgets.filter((b) => b.category_id === cur)
+    const hit = pots.find((b) => b.team_scope === (scope || 'both'))
+      || pots.find((b) => b.team_scope === 'both')
+    if (hit) return hit.id
+    cur = parentOfCat[cur]
+  }
+  const overall = D.budgets.filter((b) => !b.category_id)
+  return (overall.find((b) => b.team_scope === (scope || 'both'))
+    || overall.find((b) => b.team_scope === 'both'))?.id ?? null
+}
+
 function refProjectBudgets(budgets, lines, picked, extras) {
   const own = ownershipRef(budgets)
   return budgets.map((b) => {
@@ -91,8 +108,18 @@ function refProjectBudgets(budgets, lines, picked, extras) {
     const inScope = (cid) => (b.category_id ? (cid && set.has(cid)) : true)
     const mine = ownedRef(b.id, own)
     const spent = lines.reduce((s, l) => s + (mine.has(l.budget_id) || (!b.category_id && l.budget_id == null) ? Number(l.amount) : 0), 0)
-    const planned = picked.reduce((s, r) => s + (inScope(r.category_id) ? lineTotal(r) : 0), 0)
-      + extras.reduce((s, e) => s + (inScope(e.category_id) ? (Number(e.amount) || 0) : 0), 0)
+    // UPDATED DELIBERATELY. `planned` used to match on category, so one wish
+    // -list item was counted by every pot on that category — with three pots on
+    // רובוט a 4,500 item was planned three times over. It now resolves to ONE
+    // pot the way real spend does. The reference mirrors that.
+    const planned = picked.reduce((s, r) => {
+      const target = resolveRef(r.category_id, r.team_scope)
+      return s + (mine.has(target) ? lineTotal(r) : 0)
+    }, 0)
+      + extras.reduce((s, e) => {
+        const target = resolveRef(e.category_id, e.team_scope)
+        return s + (mine.has(target) ? (Number(e.amount) || 0) : 0)
+      }, 0)
     const amount = Number(b.amount)
     const after = spent + planned
     const R = (n) => (Math.round((Number(n) || 0) * 100) / 100) || 0
@@ -104,8 +131,24 @@ function refProjectBudgets(budgets, lines, picked, extras) {
 }
 
 let checks = 0, failures = 0
-const eq = (label, a, b) => { checks++; if (JSON.stringify(a) !== JSON.stringify(b)) { failures++
-  console.log(`  MISMATCH ${label}\n    ref ${JSON.stringify(a).slice(0,180)}\n    new ${JSON.stringify(b).slice(0,180)}`) } }
+const eq = (label, a, b) => {
+  checks++
+  if (JSON.stringify(a) === JSON.stringify(b)) return
+  failures++
+  console.log(`  MISMATCH ${label}`)
+  // Field-level. A 180-character slice of two near-identical arrays shows
+  // nothing useful — the difference is always past the cut.
+  const A = Array.isArray(a) ? a : [a]
+  const B = Array.isArray(b) ? b : [b]
+  for (let i = 0; i < Math.max(A.length, B.length); i++) {
+    const x = A[i] || {}, y = B[i] || {}
+    for (const k of new Set([...Object.keys(x), ...Object.keys(y)])) {
+      if (JSON.stringify(x[k]) !== JSON.stringify(y[k])) {
+        console.log(`    [${i}] ${x.label ?? y.label ?? ''} · ${k}: ref=${JSON.stringify(x[k])} new=${JSON.stringify(y[k])}`)
+      }
+    }
+  }
+}
 
 // shopping: every column, both directions, with and without a search term
 for (const q of ['', 'kraken', 'אום', 'am-']) {

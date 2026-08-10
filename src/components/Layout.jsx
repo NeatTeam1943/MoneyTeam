@@ -5,6 +5,7 @@ import { useI18n } from '../lib/i18n'
 import { useTeamScope } from '../context/TeamScopeContext'
 import { SCOPE_COLOR } from './TeamScope'
 import { useTheme } from '../context/ThemeContext'
+import ReportIssue from './ReportIssue'
 
 export default function Layout({ children }) {
   const { t, toggle, lang } = useI18n()
@@ -50,6 +51,7 @@ export default function Layout({ children }) {
             {t(l.key)}
           </NavLink>
         ))}
+        <ReportIssue />
       </aside>
 
       <div className="main">

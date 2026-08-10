@@ -5,7 +5,10 @@ import { lineTotalOf } from './money'
 
 /** Fields a free-text search looks through — everything you might plausibly
  *  remember about an item. */
-const SEARCHABLE = ['name', 'sku', 'vendor', 'categoryName', 'priorityName', 'notes', 'description']
+// Everything a person might type. The status and program were missing, so
+// searching "אושר" or "FTC" found nothing even though both are on screen.
+const SEARCHABLE = ['name', 'sku', 'vendor', 'categoryName', 'priorityName',
+  'notes', 'description', 'statusLabel', 'team_scope']
 
 export function matchesSearch(row, needle) {
   if (!needle) return true
@@ -35,14 +38,27 @@ export function sortValue(row, col, { rankOf, statusLabel }) {
   }
 }
 
+/**
+ * Sort by one column, then break ties with another.
+ *
+ * `sort.then` is the secondary column — sorting by category alone left the
+ * rows inside each category in whatever order they arrived, which is the point
+ * at which a long list stops being scannable.
+ */
 export function sortRows(rows, sort, helpers) {
   const mul = sort.dir === 'asc' ? 1 : -1
-  return [...rows].sort((a, b) => {
-    const av = sortValue(a, sort.col, helpers)
-    const bv = sortValue(b, sort.col, helpers)
-    if (av < bv) return -1 * mul
-    if (av > bv) return 1 * mul
+  const thenMul = sort.thenDir === 'desc' ? -1 : 1
+  const cmp = (a, b, col, m) => {
+    const av = sortValue(a, col, helpers)
+    const bv = sortValue(b, col, helpers)
+    if (av < bv) return -1 * m
+    if (av > bv) return 1 * m
     return 0
+  }
+  return [...rows].sort((a, b) => {
+    const primary = cmp(a, b, sort.col, mul)
+    if (primary !== 0) return primary
+    return sort.then ? cmp(a, b, sort.then, thenMul) : 0
   })
 }
 
@@ -55,12 +71,43 @@ export function sortRows(rows, sort, helpers) {
  * list. An empty array means no filtering at all, so "select none" and "select
  * all" stay distinguishable.
  */
-export function filterRows(rows, { search, statuses, priority }) {
-  const set = statuses?.length ? new Set(statuses) : null
-  return rows.filter((r) =>
-    matchesSearch(r, search)
-    && (!set || set.has(r.status))
-    && (!priority || r.priority_level_id === priority))
+/**
+ * @param f  search, statuses[], priority, categories[], scopes[], minPrice,
+ *           maxPrice, hasPrice
+ *
+ * `categories` is a Set of ids INCLUDING descendants — picking "רובוט" is
+ * expected to bring its children, and expanding the subtree in the caller
+ * keeps this function free of tree knowledge.
+ */
+export function filterRows(rows, f = {}) {
+  const { search, statuses, priority, categories, scopes, minPrice, maxPrice, hasPrice } = f
+  const statusSet = statuses?.length ? new Set(statuses) : null
+  const catSet = categories?.size ? categories : null
+  const scopeSet = scopes?.length ? new Set(scopes) : null
+  const min = minPrice === '' || minPrice == null ? null : Number(minPrice)
+  const max = maxPrice === '' || maxPrice == null ? null : Number(maxPrice)
+
+  return rows.filter((r) => {
+    if (!matchesSearch(r, search)) return false
+    if (statusSet && !statusSet.has(r.status)) return false
+    if (priority && r.priority_level_id !== priority) return false
+    if (catSet && !catSet.has(r.category_id)) return false
+    if (scopeSet && !scopeSet.has(r.team_scope || 'both')) return false
+
+    // A row with no price is neither above nor below a threshold. Excluding it
+    // from a "cheaper than X" search would hide the very rows that still need
+    // a price, so a range filter leaves priced rows only when a bound is set.
+    const priced = r.est_price != null && r.est_price !== ''
+    if (hasPrice === 'yes' && !priced) return false
+    if (hasPrice === 'no' && priced) return false
+    if ((min != null || max != null)) {
+      if (!priced) return false
+      const total = lineTotalOf(r)
+      if (min != null && total < min) return false
+      if (max != null && total > max) return false
+    }
+    return true
+  })
 }
 
 /** Estimated value per category label. */

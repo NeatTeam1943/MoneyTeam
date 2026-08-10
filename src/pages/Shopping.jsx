@@ -67,6 +67,9 @@ export default function Shopping() {
   // outstanding should not open full of items that already arrived.
   const [fStatuses, setFStatuses] = useState(() => [...DEFAULT_SHOPPING_STATUSES])
   const [fPriority, setFPriority] = useState('')
+  const [fCategory, setFCategory] = useState('')
+  const [fScopes, setFScopes] = useState([])
+  const [fHasPrice, setFHasPrice] = useState('')
 
   const rankOf = useMemo(() => Object.fromEntries(lk.levels.map((l) => [l.id, l.rank])), [lk.levels])
 
@@ -105,12 +108,17 @@ export default function Shopping() {
     ...r,
     categoryName: lk.categoryName[r.category_id] || '',
     priorityName: lk.levelName[r.priority_level_id] || '',
-  })), [rows, lk.categoryName, lk.levelName, ts])
+    // So free-text search can match "אושר" or "ממתין", which are on screen
+    // but were not in any searchable field.
+    statusLabel: t(r.status),
+  })), [rows, lk.categoryName, lk.levelName, ts, t])
 
   // Expense lines carry their scope on the parent transaction.
   const scopedLines = useMemo(() => lines.filter((l) => ts.matches(l.tx_team_scope)), [lines, ts])
 
-  const [sort, setSort] = useState({ col: 'priority', dir: 'asc' })
+  // `then` is the tie-breaker: sorting by category alone left rows inside each
+  // category in arrival order, which is where a long list stops being scannable.
+  const [sort, setSort] = useState({ col: 'priority', dir: 'asc', then: 'name', thenDir: 'asc' })
   function toggleSort(col) {
     setSort((s) => (s.col === col ? { col, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'asc' }))
   }
@@ -123,10 +131,19 @@ export default function Shopping() {
   // both directions and several search terms.
   const filtered = useMemo(
     () => sortRows(
-      filterRows(enriched, { search: q, statuses: fStatuses, priority: fPriority }),
+      filterRows(enriched, {
+        search: q,
+        statuses: fStatuses,
+        priority: fPriority,
+        // Picking a parent category is expected to include its children; the
+        // subtree is expanded here so the filter itself needs no tree.
+        categories: fCategory ? lk.descendantsOf(fCategory) : null,
+        scopes: fScopes,
+        hasPrice: fHasPrice,
+      }),
       sort,
       { rankOf, statusLabel: t }),
-    [enriched, fStatuses, fPriority, q, rankOf, sort, t])
+    [enriched, fStatuses, fPriority, fCategory, fScopes, fHasPrice, q, rankOf, sort, t, lk])
 
   // "requested" = still wanted (not received / cancelled)
   const open = useMemo(() => enriched.filter((r) => BUYABLE_STATUSES.includes(r.status)), [enriched])
@@ -383,6 +400,26 @@ export default function Shopping() {
           <option value="">{t('priority')}: {t('all')}</option>
           {lk.levels.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
         </select>
+        <select value={fCategory} onChange={(e) => setFCategory(e.target.value)}>
+          <option value="">{t('category')}: {t('all')}</option>
+          {lk.categoryTree.map((c) => (
+            <option key={c.id} value={c.id}>{c.path || c.name}</option>
+          ))}
+        </select>
+        <select value={fHasPrice} onChange={(e) => setFHasPrice(e.target.value)}>
+          <option value="">{t('price')}: {t('all')}</option>
+          <option value="yes">{t('withPrice')}</option>
+          <option value="no">{t('withoutPrice')}</option>
+        </select>
+        {/* Tie-breaker for the primary sort: category alone left rows
+            inside each category in arrival order. */}
+        <select value={sort.then || ''} onChange={(e) => setSort({ ...sort, then: e.target.value || null })}>
+          <option value="">{t('thenBy')}: —</option>
+          <option value="name">{t('name')}</option>
+          <option value="category">{t('category')}</option>
+          <option value="priority">{t('priority')}</option>
+          <option value="est_price">{t('unitPrice')}</option>
+        </select>
         <div className="spacer" />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('searchShopping')}
           style={{ flex: '1 1 14rem', minWidth: '10rem' }} />
@@ -393,7 +430,23 @@ export default function Shopping() {
           </button>
         )}
         {canSelect && selectedItems.length > 0 && (
-          <button className="btn btn-sm" onClick={clearSelection}>{t('selectNone')} ({selectedItems.length})</button>
+
+          <>
+
+            <button className="btn btn-sm" onClick={clearSelection}>{t('selectNone')} ({selectedItems.length})</button>
+
+            {/* What the selection comes to. Ticking rows to decide what to
+
+                buy is pointless without the number the decision turns on. */}
+
+            <span className="mono" style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
+
+              {t('selectedTotal')}: {money(selectedItems.reduce((sum, r) => sum + lineTotal(r), 0))}
+
+            </span>
+
+          </>
+
         )}
         {canChangeStatus && selectedItems.length > 0 && (
           <select value="" onChange={(e) => { if (e.target.value) bulkStatus(e.target.value) }}>
@@ -498,6 +551,11 @@ export default function Shopping() {
           onEdit={() => { setEditing(detail); setDetail(null); setShowForm(true) }}
           rows={[
             { label: t('teamScope'), value: <TeamScopeBadge scope={detail.team_scope} /> },
+            // The full path, not just the leaf: "מנועים" alone does not say
+            // which parent it sits under when several trees have similar names.
+            { label: t('category'),
+              value: lk.categoryTree.find((c) => c.id === detail.category_id)?.path
+                || detail.categoryName || '—' },
             { label: t('category'), value: detail.categoryName },
             { label: t('sku'), value: detail.sku, mono: true },
             { label: t('vendor'), value: detail.vendor },

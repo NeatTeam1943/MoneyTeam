@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useScenario } from '../lib/useScenario'
 import { supabase, withTimeout } from '../lib/supabase'
+import { fetchCached } from '../lib/seasonCache'
 import { useAuth } from '../context/AuthContext'
 import { useSeason } from '../context/SeasonContext'
 import { useI18n } from '../lib/i18n'
@@ -34,24 +36,37 @@ export default function Simulation() {
   const [balances, setBalances] = useState([])
   const [loading, setLoading] = useState(true)
 
-  const [picked, setPicked] = useState(() => new Set())
+  // Everything the user builds up is one object, kept in localStorage so a trip
+  // to Transactions no longer wipes it. A Set does not survive JSON, so the
+  // picked ids are stored as an array and adapted here.
+  const EMPTY = { pickedIds: [], fundFrom: '', fundBy: {}, incomes: [], extras: [], guessPrice: {} }
+  const [scenario, setScenario, clearScenario, scenarioDirty] = useScenario(activeId, EMPTY)
+  const picked = useMemo(() => new Set(scenario.pickedIds), [scenario.pickedIds])
+  const setPicked = (next) => {
+    const value = typeof next === 'function' ? next(new Set(scenario.pickedIds)) : next
+    setScenario((sc) => ({ ...sc, pickedIds: [...value] }))
+  }
   // Default account for anything newly picked. Individual rows can override it,
   // because one basket is often paid from more than one place — part from the
   // bank, part from store credit.
-  const [fundFrom, setFundFrom] = useState('')
-  const [fundBy, setFundBy] = useState({})     // { [itemId]: accountId }
-  const [incomes, setIncomes] = useState([])   // [{ label, amount, account_id }]
+  const fundFrom = scenario.fundFrom
+  const setFundFrom = (v) => setScenario((sc) => ({ ...sc, fundFrom: typeof v === 'function' ? v(sc.fundFrom) : v }))
+  const fundBy = scenario.fundBy
+  const setFundBy = (v) => setScenario((sc) => ({ ...sc, fundBy: typeof v === 'function' ? v(sc.fundBy) : v }))     // { [itemId]: accountId }
+  const incomes = scenario.incomes
+  const setIncomes = (v) => setScenario((sc) => ({ ...sc, incomes: typeof v === 'function' ? v(sc.incomes) : v }))   // [{ label, amount, account_id }]
   // Things that are not on the shopping list yet. The point of the page is to
   // decide whether they SHOULD be, so they have to be costable before they
   // exist as records.
-  const [extras, setExtras] = useState([])     // [{ id, label, amount, category_id, team_scope, account_id }]
+  const extras = scenario.extras
+  const setExtras = (v) => setScenario((sc) => ({ ...sc, extras: typeof v === 'function' ? v(sc.extras) : v }))     // [{ id, label, amount, category_id, team_scope, account_id }]
 
   async function load() {
     if (!activeId) { setLoading(false); return }
     try {
       const [it, bg, tl, bal] = await withTimeout(Promise.all([
-        supabase.from('shopping_items').select('*').eq('season_id', activeId),
-        supabase.from('budgets').select('*').eq('season_id', activeId),
+        fetchCached('shopping_items', { seasonId: activeId }),
+        fetchCached('budgets', { seasonId: activeId }),
         supabase.from('ledger_lines_full').select('amount,budget_id,team_scope,category_id,season_id,tx_team_scope').eq('season_id', activeId),
         supabase.from('account_balances').select('*'),
       ]))
@@ -73,9 +88,23 @@ export default function Simulation() {
     (r) => ts.matches(r.team_scope) && OPEN_STATUSES.includes(r.status)
   ), [items, ts])
 
-  const cost = lineTotal
-  const priced = useMemo(() => open.filter((r) => cost(r) > 0), [open])
-  const unpriced = useMemo(() => open.filter((r) => cost(r) <= 0), [open])
+  // A price typed here is a guess for the scenario only — it is never written
+  // back to the shopping item. Someone planning wants to ask "what if this
+  // costs 400" without committing a number they do not have yet, and quietly
+  // saving it would turn a guess into a quoted price.
+  const guessPrice = scenario.guessPrice || {}
+  const setGuess = (id, v) =>
+    setScenario((sc) => ({ ...sc, guessPrice: { ...(sc.guessPrice || {}), [id]: v } }))
+  const cost = (r) => {
+    const real = lineTotal(r)
+    if (real > 0) return real
+    const g = Number(guessPrice[r.id])
+    return g > 0 ? g * qtyOf(r) : 0
+  }
+  // "priced" now includes anything given a guess, so a guessed row can be
+  // picked and funded like any other.
+  const priced = useMemo(() => open.filter((r) => cost(r) > 0), [open, guessPrice])
+  const unpriced = useMemo(() => open.filter((r) => cost(r) <= 0), [open, guessPrice])
 
   const selected = useMemo(() => open.filter((r) => picked.has(r.id)), [open, picked])
   const accountFor = (id) => fundBy[id] || fundFrom
@@ -144,6 +173,21 @@ export default function Simulation() {
   return (
     <div>
       <p style={{ color: 'var(--text-faint)', fontSize: 13, marginTop: 0 }}>{t('simulationHint')}</p>
+
+      {/* A scenario is a draft: it is kept in this browser so leaving the page
+          no longer discards it, and it is never written to the ledger. Saying
+          so matters — an unexplained figure that survives a reload looks like
+          something that was recorded. */}
+      {scenarioDirty && (
+        <div className="panel panel-pad" style={{
+          marginBottom: 14, display: 'flex', gap: 10, alignItems: 'center',
+          flexWrap: 'wrap', borderInlineStart: '3px solid var(--orange)',
+        }}>
+          <b style={{ fontSize: 13 }}>{t('scenarioKept')}</b>
+          <span style={{ color: 'var(--text-faint)', fontSize: 12, flex: 1 }}>{t('scenarioKeptHint')}</span>
+          <button className="btn btn-sm" onClick={clearScenario}>{t('scenarioClear')}</button>
+        </div>
+      )}
 
       <div className="stats">
         <Stat k={t('plannedSpend')} v={money(plannedSpend)} c="var(--out)" />
@@ -280,7 +324,10 @@ export default function Simulation() {
             <th>{t('fundFrom')}</th>
           </tr></thead>
           <tbody>
-            {priced.map((r) => (
+            {/* Priced first, then the ones still waiting for a number — they
+                have to be ON the table for a price to be typed into them, and
+                putting them last keeps the ready-to-plan rows at the top. */}
+            {[...priced, ...unpriced].map((r) => (
               <tr key={r.id} style={picked.has(r.id) ? { background: 'rgba(255,145,0,.07)' } : undefined}>
                 <td><input type="checkbox" checked={picked.has(r.id)} onChange={() => toggle(r.id)} style={{ width: 'auto' }} /></td>
                 <td>{r.name}</td>

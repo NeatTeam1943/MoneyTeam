@@ -408,7 +408,28 @@ export default function Transactions() {
             { label: t('account'), value: detail.accountName },
             { label: t('vendor'), value: detail.vendor },
             { label: t('source'), value: detail.sourceName },
-            { label: t('category'), value: detail.categoryLabel },
+            {
+              label: t('category'),
+              // Per line, with its program and amount. The header's combined
+              // "א + ב" says which categories were involved but not how much
+              // went to each — which is the question a preview is opened to
+              // answer.
+              value: (() => {
+                const own = txLines[detail.id] || []
+                if (own.length <= 1) return detail.categoryLabel
+                return (
+                  <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 3 }}>
+                    {own.map((l) => (
+                      <span key={l.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <TeamScopeBadge scope={l.team_scope} />
+                        <span>{lk.categoryName[l.category_id] || budgetLabel(l.budget_id) || '—'}</span>
+                        <span className="mono" style={{ color: 'var(--text-dim)' }}>{money(l.amount)}</span>
+                      </span>
+                    ))}
+                  </span>
+                )
+              })(),
+            },
             !isParent && { label: t('payer'), value: detail.payer_display },
             { label: t('notes'), value: detail.notes, style: { whiteSpace: 'pre-wrap' } },
           ]}

@@ -395,6 +395,10 @@ export default function Reports() {
             <div className="panel panel-pad" style={{ marginTop: 16 }}>
               <div className="section-title" style={{ marginTop: 0, marginBottom: 2 }}>{t('goals')}</div>
               <p style={{ color: 'var(--text-faint)', fontSize: 12, margin: '0 0 8px' }}>{t('noteGoals')}</p>
+              {/* Six columns need a scroll container on a phone. Without one the
+                  table overflowed the panel: the name column was squeezed to three
+                  characters per line and the last column sat off screen. */}
+              <div className="table-wrap">
               <table className="data">
                 <thead><tr>
                   <th>{t('name')}</th>
@@ -428,6 +432,7 @@ export default function Reports() {
                   </tr>
                 </tbody>
               </table>
+              </div>
               {goalTotals.overCommitted > 0 && (
                 <p style={{ color: 'var(--danger)', fontSize: 13, margin: '8px 0 0' }}>
                   {t('overCommittedHint').replace('{v}', money(goalTotals.overCommitted))}</p>

@@ -447,6 +447,9 @@ export default function Transactions() {
               {/* A split purchase is only understandable line by line — the
                   header amount says nothing about which programs it covered. */}
               <div className="section-title">{t('lines')}</div>
+              {/* Inside a modal, which is narrower than the page — four columns
+                  with free-text descriptions overflow without this. */}
+              <div className="table-wrap">
               <table className="data">
                 <thead><tr>
                   <th>{t('description')}</th>
@@ -467,6 +470,7 @@ export default function Transactions() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </>
           )}
         />

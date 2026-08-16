@@ -66,6 +66,24 @@ for (const f of readdirSync('src/pages').filter((x) => x.endsWith('.jsx'))) {
   }
 }
 
-bad += inlineSize
+// A budget lock freezes the AMOUNT. It must never reach the spending path:
+// "we have decided the budget" is not "no more spending" — it is the point at
+// which the budget starts doing its job. Cheap to break by adding a
+// `budgets_locked` check to the wrong screen, so it is asserted.
+let lockLeak = 0
+const spendPaths = ['src/pages/Transactions.jsx', 'src/pages/Shopping.jsx',
+  'src/pages/Simulation.jsx', 'src/pages/Dashboard.jsx', 'src/pages/Reports.jsx',
+  'src/components/TransactionForm.jsx']
+for (const p of spendPaths) {
+  let text
+  try { text = src(p) } catch { continue }
+  if (text.includes('budgets_locked')) {
+    lockLeak++
+    console.log(`  LOCK LEAKED INTO THE SPENDING PATH: ${p}`)
+    console.log('         a lock freezes budget amounts, not spending or reporting')
+  }
+}
+
+bad += inlineSize + lockLeak
 console.log(bad ? `\n  ${bad} problem(s)` : '  no stale strings')
 process.exit(bad ? 1 : 0)

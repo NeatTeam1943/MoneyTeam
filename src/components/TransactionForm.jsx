@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import DateField from './DateField'
 import { supabase } from '../lib/supabase'
 import { useI18n } from '../lib/i18n'
@@ -14,6 +15,7 @@ const OTHER_TYPES = ['income', 'transfer', 'in_kind'] // expense handled separat
 
 export default function TransactionForm({ editing, initial, seasonId, accounts, categories, sources, budgets = [], vendors = [], onClose, onSaved, onPreview }) {
   const { t } = useI18n()
+  const navigate = useNavigate()
   const { isMentor } = useAuth()
   const lk = useLookups()
   const seed = editing || initial || {}
@@ -117,6 +119,20 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
     return [...f.receipt_urls, ...uploaded]
   }
 
+  // Hands the draft to the simulation through the URL, so it survives the
+  // navigation without a shared store — and so the link can be sent to
+  // someone else to look at. Deliberately does not save anything.
+  function openInSimulation() {
+    const first = lines[0] || {}
+    const p = new URLSearchParams()
+    p.set('amount', String(total))
+    if (f.description) p.set('label', f.description)
+    if (first.category_id) p.set('category', first.category_id)
+    if (first.team_scope) p.set('scope', first.team_scope)
+    if (f.account_id) p.set('account', f.account_id)
+    navigate(`/simulation?${p.toString()}`)
+  }
+
   async function saveExpense() {
     if (!f.account_id) { setErr(t('requiredField') + ': ' + t('account')); return }
     const clean = lines.filter((l) => Number(l.amount) > 0)
@@ -206,6 +222,12 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
       onClose={onClose}
       footer={<>
         <button className="btn btn-ghost" onClick={onClose}>{t('cancel')}</button>
+        {/* Try it before committing to it. Deliberately does NOT save: the
+            point is to see what this purchase would do to the balances and the
+            budgets first. Only offered once there is an amount to try. */}
+        {total > 0 && (
+          <button className="btn btn-ghost" onClick={openInSimulation}>{t('openInSimulation')}</button>
+        )}
         <button className="btn btn-primary" onClick={save} disabled={busy}>
           {busy ? '…' : (isMentor ? t('save') : t('proposeExpense'))}
         </button>

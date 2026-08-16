@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import DateField from '../components/DateField'
 import { supabase, withTimeout } from '../lib/supabase'
 import { useRefreshOnReturn } from '../lib/useRefreshOnReturn'
@@ -41,9 +42,26 @@ export default function Transactions() {
   const [detail, setDetail] = useState(null)
 
   const [q, setQ] = useState('')
-  const [fType, setFType] = useState('')
+  // Arriving from a budget's "view expenses" link. Read once, from the URL, so
+  // the filtered view is a real address: it survives a reload and can be
+  // shared, which a filter set by an in-memory hand-off cannot.
+  const [params, setParams] = useSearchParams()
+  const [fType, setFType] = useState(() => params.get('type') || '')
   const [fAccount, setFAccount] = useState('')
-  const [fCategory, setFCategory] = useState('')
+  const [fCategory, setFCategory] = useState(() => params.get('category') || '')
+  const [fScope, setFScope] = useState(() => params.get('scope') || '')
+
+  // Keep the address in step with the filters, so a filtered view can be
+  // reloaded or sent to someone. `replace` so filtering does not fill the back
+  // button with every intermediate state.
+  useEffect(() => {
+    const next = new URLSearchParams()
+    if (fCategory) next.set('category', fCategory)
+    if (fScope) next.set('scope', fScope)
+    if (fType) next.set('type', fType)
+    setParams(next, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fCategory, fScope, fType])
   const [fSource, setFSource] = useState('')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
@@ -186,6 +204,16 @@ export default function Transactions() {
         const touched = txCategoryIds[r.id] || new Set()
         if (![...touched].some((cid) => wanted.has(cid))) return false
       }
+      // A budget knows its PROGRAM as well as its category. Without this,
+      // "view expenses" on רובוט · FRC would list FTC spending too and the
+      // total would not match the figure that was clicked.
+      if (fScope) {
+        const own = txLines[r.id] || []
+        const scopes = own.length
+          ? new Set(own.map((l) => l.team_scope || 'both'))
+          : new Set([r.team_scope || 'both'])
+        if (!scopes.has(fScope)) return false
+      }
       if (fSource && r.income_source_id !== fSource) return false
       if (from && r.date < from) return false
       if (to && r.date > to) return false
@@ -294,6 +322,15 @@ export default function Transactions() {
         <select value={fCategory} onChange={(e) => setFCategory(e.target.value)}>
           <option value="">{t('category')}: {t('all')}</option>
           {lk.categoryTree.map((c) => <option key={c.id} value={c.id}>{catLabel(c)}</option>)}
+        </select>
+        {/* Visible and editable, not a hidden filter. Arriving from a
+            budget sets it, and the bar then SHOWS what is filtered so it
+            can be widened or cleared from where you are looking. */}
+        <select value={fScope} onChange={(e) => setFScope(e.target.value)}>
+          <option value="">{t('teamScope')}: {t('all')}</option>
+          <option value="frc">FRC</option>
+          <option value="ftc">FTC</option>
+          <option value="both">{t('scope_both')}</option>
         </select>
         <select value={fSource} onChange={(e) => setFSource(e.target.value)}>
           <option value="">{t('source')}: {t('all')}</option>

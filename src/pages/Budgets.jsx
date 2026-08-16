@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts'
 import { supabase, withTimeout } from '../lib/supabase'
-import { fetchCached, mutate } from '../lib/seasonCache'
+import { fetchCached, mutate, invalidate } from '../lib/seasonCache'
 import { useRefreshOnReturn } from '../lib/useRefreshOnReturn'
 import { useAuth } from '../context/AuthContext'
 import { useSeason } from '../context/SeasonContext'
@@ -13,6 +14,8 @@ import { buildBudgetRows, groupSiblings } from '../domain/budgets'
 import { buildOwnership } from '../domain/budgetOwnership'
 import { splitByExclusivity } from '../lib/teamScope'
 import { budgetFundingGap } from '../domain/goals'
+import BudgetRaise from '../components/BudgetRaise'
+import RaiseLog from '../components/RaiseLog'
 import { roundMoney } from '../domain/money'
 import { GROUPING, SCOPE, OPEN_STATUSES } from '../domain/constants'
 import { emptyCalcRow, rowTotal, calcTotal, cleanCalc, calcStatus } from '../domain/budgetCalc'
@@ -46,7 +49,7 @@ function Stat({ k, v, c }) {
 
 export default function Budgets() {
   const { t } = useI18n()
-  const { canBudget, session } = useAuth()
+  const { canBudget, isMentor, canPropose, session } = useAuth()
   const uid = session?.user?.id
   const { activeId } = useSeason()
   const toast = useToast()
@@ -57,6 +60,9 @@ export default function Budgets() {
   const [shopping, setShopping] = useState([])
   const [goals, setGoals] = useState([])
   const [balances, setBalances] = useState([])
+  const [raises, setRaises] = useState([])
+  const [raising, setRaising] = useState(null)
+  const [locked, setLocked] = useState(false)
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(null)
   const [open, setOpen] = useState(false)
@@ -65,19 +71,24 @@ export default function Budgets() {
     if (!activeId) { setLoading(false); return }
     if (budgets.length === 0) setLoading(true)   // only spinner when nothing is showing yet
     try {
-      const [b, tl, sh, gl, bal] = await withTimeout(Promise.all([
+      const [b, tl, sh, gl, bal, rq, sn] = await withTimeout(Promise.all([
         fetchCached('budgets', { seasonId: activeId }),
         supabase.from('ledger_lines_full').select('amount,budget_id,team_scope,category_id,season_id,tx_team_scope').eq('season_id', activeId),
         supabase.from('shopping_items').select('est_price,quantity,category_id,status,team_scope').eq('season_id', activeId),
           // Goals span seasons — deliberately no season filter.
           supabase.from('savings_goals').select('reserved,team_scope,archived_at'),
           supabase.from('account_balances').select('*'),
+          supabase.from('budget_raise_requests').select('*').eq('season_id', activeId)
+            .order('requested_at', { ascending: false }),
+          supabase.from('seasons').select('budgets_locked').eq('id', activeId).single(),
       ]))
       if (!b.error) setBudgets(b.data || [])
       if (!tl.error) setExpenses(tl.data || []) // expense LINES (each charges a budget)
       if (!sh.error) setShopping(sh.data || [])
         if (!gl.error) setGoals(gl.data || [])
         if (!bal.error) setBalances(bal.data || [])
+        if (!rq.error) setRaises(rq.data || [])
+        if (!sn.error) setLocked(!!sn.data?.budgets_locked)
     } catch (e) {
       if (e.message === 'timeout') toast.error(t('loadTimedOut'))
     } finally {
@@ -201,6 +212,35 @@ export default function Budgets() {
 
   const chartData = useMemo(() => chartRows.map((r) => ({ name: r.team_scope === SCOPE.BOTH ? r.label : `${r.label} · ${r.team_scope.toUpperCase()}`, [t('spent')]: r.spent, [t('requested')]: r.requested })), [chartRows, t])
 
+  // A budget's own filter, as a URL. The category carries its descendants on
+  // the other side; the program is only added when the pot has one, since a
+  // shared pot should not filter to 'both' and hide the FRC lines charged to it.
+  function expensesHref(row) {
+    const p = new URLSearchParams()
+    if (row.category_id) p.set('category', row.category_id)
+    if (row.team_scope && row.team_scope !== 'both') p.set('scope', row.team_scope)
+    p.set('type', 'expense')
+    return `/transactions?${p.toString()}`
+  }
+
+  async function toggleLock() {
+    const { error } = await supabase.from('seasons')
+      .update({ budgets_locked: !locked, budgets_locked_at: new Date().toISOString() })
+      .eq('id', activeId)
+    if (error) { toast.error(error.message); return }
+    load()
+  }
+
+  async function decideRaise(r, approve) {
+    const { error } = await supabase.rpc('decide_budget_raise', {
+      p_request_id: r.id, p_approve: approve, p_note: null,
+    })
+    if (error) { toast.error(error.message); return }
+    // An approved raise changes an amount, so the cached budgets are stale.
+    invalidate('budgets')
+    load()
+  }
+
   async function del(id) {
     if (!confirm(t('confirmDelete'))) return
     await mutate('budgets', (q) => q.delete().eq('id', id))
@@ -233,6 +273,20 @@ export default function Budgets() {
       {/* The figure the budgets page could not show: how much of the remaining
           permission the bank actually covers once goals have taken their share.
           Only rendered when there IS a gap. */}
+      {/* Locking freezes the AMOUNT only — everything stays visible and
+          spending is unaffected. Stated plainly so a disabled edit button reads
+          as a rule rather than a fault. */}
+      <div className="toolbar">
+        {isMentor && (
+          <button className="btn btn-sm" onClick={toggleLock}>
+            {locked ? t('unlockBudgets') : t('lockBudgets')}
+          </button>
+        )}
+        {locked && (
+          <span style={{ fontSize: 13, color: 'var(--text-dim)' }}>{t('lockedHint')}</span>
+        )}
+      </div>
+
       {funding.unfunded > 0 && (
         <div className="panel panel-pad" style={{ marginBottom: 18, borderInlineStart: '3px solid var(--orange)' }}>
           <b>{t('unfundedBudget')}</b>
@@ -403,8 +457,22 @@ export default function Budgets() {
                   {r.isGroup ? (
                     <span style={{ color: 'var(--text-faint)', fontSize: 12 }}>{t('editEachPart')}</span>
                   ) : (<>
-                    <button className="btn btn-ghost btn-sm" onClick={() => { setEditing(r); setOpen(true) }}>{t('edit')}</button>
-                    <button className="btn btn-ghost btn-sm btn-danger" onClick={() => del(r.id)}>{t('delete')}</button>
+                    {/* Editing the amount is what a lock stops; requesting a raise is
+                        the sanctioned way through it, so that button appears exactly
+                        when the other cannot. */}
+                    {!locked && (
+                      <button className="btn btn-ghost btn-sm" onClick={() => { setEditing(r); setOpen(true) }}>{t('edit')}</button>
+                    )}
+                      {/* Straight to the spending behind this number, filtered to the same
+                          category (with its children) and the same program — so the total
+                          on the next page matches the figure that was clicked. */}
+                      <Link className="btn btn-ghost btn-sm" to={expensesHref(r)}>{t('viewExpenses')}</Link>
+                    {canBudget && (
+                      <button className="btn btn-ghost btn-sm" onClick={() => setRaising(r)}>{t('requestRaise')}</button>
+                    )}
+                    {!locked && (
+                      <button className="btn btn-ghost btn-sm btn-danger" onClick={() => del(r.id)}>{t('delete')}</button>
+                    )}
                   </>)}
                 </div>
               )}
@@ -417,6 +485,29 @@ export default function Budgets() {
           {canBudget && <button className="btn btn-primary" onClick={() => { setEditing(null); setOpen(true) }}>+ {t('addFirst')}</button>}
         </div>
       )}
+
+
+      <RaiseLog rows={raises} onDecide={decideRaise} isMentor={isMentor} />
+
+
+      {raising && (
+
+        <BudgetRaise
+
+          budget={raising}
+
+          spent={raising.spent}
+
+          isMentor={isMentor}
+
+          onClose={() => setRaising(null)}
+
+          onDone={(msg) => { setRaising(null); if (msg) toast.success(msg); invalidate('budgets'); load() }}
+
+        />
+
+      )}
+
 
       {open && (
         <BudgetForm

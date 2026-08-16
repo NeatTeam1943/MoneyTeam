@@ -5,6 +5,7 @@ import { useI18n } from '../lib/i18n'
 import { useLookups } from '../lib/useLookups'
 import SimpleCrud from '../components/SimpleCrud'
 import TemplatesManager from '../components/TemplatesManager'
+import AlertSettings from '../components/AlertSettings'
 import PendingUsers from '../components/PendingUsers'
 
 export default function Settings() {
@@ -19,7 +20,7 @@ export default function Settings() {
   const { reload: reloadLookups } = useLookups()
   const [tab, setTab] = useState('seasons')
 
-  const tabs = ['seasons', 'accounts', 'sources', 'categories', 'vendors', 'templates', 'priorityLevels', 'members']
+  const tabs = ['seasons', 'accounts', 'sources', 'categories', 'vendors', 'templates', 'priorityLevels', 'members', 'alerts']
 
   const configs = {
     seasons: {
@@ -129,7 +130,8 @@ export default function Settings() {
           which fields a part needs are the ones ordering it. Deleting stays
           with mentors: removing a template others are using is the only action
           here that is disruptive and irreversible from the UI. */}
-      {tab === 'templates'
+      {tab === 'alerts' ? <AlertSettings />
+        : tab === 'templates'
         ? <TemplatesManager canWrite={canPropose} canDelete={isMentor} onChanged={reloadLookups} />
         : <SimpleCrud key={tab} {...cfg} />}
     </div>

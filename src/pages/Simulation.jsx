@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useScenario } from '../lib/useScenario'
 import { supabase, withTimeout } from '../lib/supabase'
 import { fetchCached } from '../lib/seasonCache'
@@ -46,6 +47,29 @@ export default function Simulation() {
   // picked ids are stored as an array and adapted here.
   const EMPTY = { pickedIds: [], fundFrom: '', fundBy: {}, incomes: [], extras: [], guessPrice: {} }
   const [scenario, setScenario, clearScenario, scenarioDirty] = useScenario(activeId, EMPTY)
+
+  // Arriving from "open in simulation" on the transaction form. Added as an
+  // ad-hoc row, NOT saved as a transaction — the whole point is to see what the
+  // purchase would do before committing to it.
+  const [params, setParams] = useSearchParams()
+  useEffect(() => {
+    const amount = Number(params.get('amount'))
+    if (!(amount > 0)) return
+    setScenario((sc) => ({
+      ...sc,
+      extras: [...(sc.extras || []), {
+        id: `draft-${Date.now()}`,
+        label: params.get('label') || '',
+        amount,
+        category_id: params.get('category') || null,
+        team_scope: params.get('scope') || 'both',
+        account_id: params.get('account') || null,
+      }],
+    }))
+    // Cleared so a reload does not add the same row again.
+    setParams(new URLSearchParams(), { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const picked = useMemo(() => new Set(scenario.pickedIds), [scenario.pickedIds])
   const setPicked = (next) => {
     const value = typeof next === 'function' ? next(new Set(scenario.pickedIds)) : next

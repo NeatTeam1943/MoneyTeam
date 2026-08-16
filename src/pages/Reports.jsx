@@ -13,6 +13,8 @@ import { useTeamScope } from '../context/TeamScopeContext'
 import { linesByTransaction, attributableAmount, touchesScope, spendByScope, exclusiveVsShared } from '../lib/teamScope'
 import ScopeNotice from '../components/ScopeNotice'
 import ShareTable from '../components/ShareTable'
+import ReportAlerts from '../components/ReportAlerts'
+import { reportAlerts } from '../domain/reportAlerts'
 import { goalProgress, goalsSummary } from '../domain/goals'
 import {
   totalsOf, byMonthOf, cumulativeOf, byCategoryOf, bySourceOf,
@@ -77,6 +79,7 @@ export default function Reports() {
   const [shopping, setShopping] = useState([])
   const [goals, setGoals] = useState([])
   const [balances, setBalances] = useState([])
+  const [raises, setRaises] = useState([])
   const [loading, setLoading] = useState(true)
 
   const [preset, setPreset] = useState('season')
@@ -93,12 +96,16 @@ export default function Reports() {
     if (!activeId) { setLoading(false); return }
     if (rows.length === 0) setLoading(true)
     try {
-      const [tx, tl, bg, sh, gl, bal] = await withTimeout(Promise.all([
+      const [tx, tl, bg, sh, gl, bal, rq] = await withTimeout(Promise.all([
         supabase.from('ledger_transactions').select('*').eq('season_id', activeId),
         supabase.from('ledger_lines_full').select('transaction_id,amount,budget_id,description,team_scope,category_id,season_id,date,tx_team_scope').eq('season_id', activeId),
         fetchCached('budgets', { seasonId: activeId }),
         fetchCached('shopping_items', { seasonId: activeId }),
         supabase.from('savings_goals').select('*'),
+        // Approved raises only: the report explains why a ceiling moved,
+        // and a rejected request did not move one.
+        supabase.from('budget_raise_requests').select('*').eq('season_id', activeId)
+          .eq('status', 'approved').order('decided_at', { ascending: false }),
         supabase.from('account_balances').select('*'),
       ]))
       if (!tx.error) setRows(tx.data || [])
@@ -107,6 +114,7 @@ export default function Reports() {
       if (!sh.error) setShopping(sh.data || [])
       if (!gl.error) setGoals(gl.data || [])
         if (!bal.error) setBalances(bal.data || [])
+        if (!rq.error) setRaises(rq.data || [])
     } catch (e) {
       if (e.message === 'timeout') toast.error(t('loadTimedOut'))
     } finally { setLoading(false) }
@@ -192,6 +200,10 @@ export default function Reports() {
   const goalTotals = useMemo(
     () => goalsSummary(shownGoals, cashForGoals), [shownGoals, cashForGoals])
 
+  // Computed from the same rows the utilisation chart uses, so the alert and
+  // the chart can never disagree about what is over.
+  const alerts = useMemo(() => reportAlerts(budgetRows), [budgetRows])
+
   const budgetChart = useMemo(
     () => budgetRows.map((r) => ({ name: r.label, [t('spent')]: r.spent, [t('budget')]: r.amount })),
     [budgetRows, t])
@@ -258,6 +270,34 @@ export default function Reports() {
         <div className="spacer" />
         <button className="btn" onClick={doExport}>{t('export')}</button>
       </div>
+
+      {/* First, before the totals and every chart. Someone who has to scroll
+          past six charts to learn that money was overspent will read the
+          charts and stop — position is as much of the emphasis as colour. */}
+      <ReportAlerts alerts={alerts} />
+
+      {/* Why a ceiling moved. A budget that ends the season matching its
+          spending looks like good planning; this is what tells you whether
+          it was planned or adjusted to fit. */}
+      {raises.length > 0 && (
+        <div className="panel panel-pad" style={{ marginBottom: 16 }}>
+          <div className="section-title" style={{ marginTop: 0 }}>{t('raiseLog')}</div>
+          <div className="table-wrap">
+            <table className="data">
+              <tbody>
+                {raises.map((r) => (
+                  <tr key={r.id}>
+                    <td className="mono">{fmtDate(r.decided_at)}</td>
+                    <td className="num mono">{money(r.amount_before)}</td>
+                    <td className="num mono">→ {money(r.amount_after)}</td>
+                    <td style={{ overflowWrap: 'anywhere' }}>{r.reason}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       <div className="stats">
         <Stat k={t('totalIncome')} v={money(totals.income)} c="var(--in)" />

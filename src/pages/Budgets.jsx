@@ -438,6 +438,13 @@ export default function Budgets() {
                           <span style={{ display: 'inline-flex', gap: 2 }}>
                             <button className="btn btn-ghost btn-sm" style={{ padding: '1px 6px', fontSize: 11 }}
                               onClick={() => { setEditing(p); setOpen(true) }}>{t('edit')}</button>
+                            {/* Each part has its own ceiling, so each can be
+                                raised on its own. Without this a split budget
+                                could not be raised at all. */}
+                            {locked && canPropose && (
+                              <button className="btn btn-ghost btn-sm" style={{ padding: '1px 6px', fontSize: 11 }}
+                                onClick={() => setRaising(p)}>{t('requestRaise')}</button>
+                            )}
                             <button className="btn btn-ghost btn-sm btn-danger" style={{ padding: '1px 6px', fontSize: 11 }}
                               onClick={() => del(p.id)}>{t('delete')}</button>
                           </span>
@@ -467,7 +474,7 @@ export default function Budgets() {
                           category (with its children) and the same program — so the total
                           on the next page matches the figure that was clicked. */}
                       <Link className="btn btn-ghost btn-sm" to={expensesHref(r)}>{t('viewExpenses')}</Link>
-                    {canBudget && (
+                    {locked && canPropose && (
                       <button className="btn btn-ghost btn-sm" onClick={() => setRaising(r)}>{t('requestRaise')}</button>
                     )}
                     {!locked && (

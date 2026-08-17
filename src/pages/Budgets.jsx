@@ -438,9 +438,8 @@ export default function Budgets() {
                           <span style={{ display: 'inline-flex', gap: 2 }}>
                             <button className="btn btn-ghost btn-sm" style={{ padding: '1px 6px', fontSize: 11 }}
                               onClick={() => { setEditing(p); setOpen(true) }}>{t('edit')}</button>
-                            {/* Each part has its own ceiling, so each can be
-                                raised on its own. Without this a split budget
-                                could not be raised at all. */}
+                            {/* Each part owns its own ceiling, so each can be raised on its
+                                own — and only while locked, for the same reason as above. */}
                             {locked && canPropose && (
                               <button className="btn btn-ghost btn-sm" style={{ padding: '1px 6px', fontSize: 11 }}
                                 onClick={() => setRaising(p)}>{t('requestRaise')}</button>
@@ -461,6 +460,10 @@ export default function Budgets() {
               )}
               {canBudget && (
                 <div style={{ marginTop: 12, display: 'flex', gap: 6 }}>
+                  {/* Before the branch, so a budget split across programs gets it too.
+                      The category is the same either way; only the AMOUNT is per-program,
+                      so only editing and raising are per-part. */}
+                  <Link className="btn btn-ghost btn-sm" to={expensesHref(r)}>{t('viewExpenses')}</Link>
                   {r.isGroup ? (
                     <span style={{ color: 'var(--text-faint)', fontSize: 12 }}>{t('editEachPart')}</span>
                   ) : (<>
@@ -470,10 +473,6 @@ export default function Budgets() {
                     {!locked && (
                       <button className="btn btn-ghost btn-sm" onClick={() => { setEditing(r); setOpen(true) }}>{t('edit')}</button>
                     )}
-                      {/* Straight to the spending behind this number, filtered to the same
-                          category (with its children) and the same program — so the total
-                          on the next page matches the figure that was clicked. */}
-                      <Link className="btn btn-ghost btn-sm" to={expensesHref(r)}>{t('viewExpenses')}</Link>
                     {locked && canPropose && (
                       <button className="btn btn-ghost btn-sm" onClick={() => setRaising(r)}>{t('requestRaise')}</button>
                     )}
@@ -494,7 +493,19 @@ export default function Budgets() {
       )}
 
 
-      <RaiseLog rows={raises} onDecide={decideRaise} isMentor={isMentor} />
+      {/* The page already knows every budget's label, including the program
+          suffix, so the log does not have to re-derive it from ids. */}
+      <RaiseLog rows={raises} onDecide={decideRaise} isMentor={isMentor}
+        labelOf={(id) => {
+          const b = budgets.find((x) => x.id === id)
+          if (!b) return null
+          const cat = b.category_id
+            ? (lk.categoryName[b.category_id] || '—')
+            : t('overall')
+          return b.team_scope && b.team_scope !== 'both'
+            ? `${cat} · ${b.team_scope.toUpperCase()}`
+            : cat
+        }} />
 
 
       {raising && (

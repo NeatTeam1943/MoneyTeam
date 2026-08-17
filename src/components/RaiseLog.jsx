@@ -11,7 +11,7 @@ import { money, fmtDate } from '../lib/format'
  * Rejected requests stay too: "we asked and were told no" is part of the record
  * and stops the same request being made twice.
  */
-export default function RaiseLog({ rows, onDecide, isMentor }) {
+export default function RaiseLog({ rows, onDecide, isMentor, labelOf }) {
   const { t } = useI18n()
   if (!rows?.length) return null
 
@@ -22,6 +22,10 @@ export default function RaiseLog({ rows, onDecide, isMentor }) {
         <table className="data">
           <thead><tr>
             <th>{t('date')}</th>
+            {/* Which budget. Approving a change without knowing what it applies
+                to is guesswork — and the amounts alone do not say, because two
+                budgets can move between the same figures. */}
+            <th>{t('budget')}</th>
             <th className="num">{t('from')}</th>
             <th className="num">{t('to')}</th>
             <th>{t('raiseReason')}</th>
@@ -32,6 +36,7 @@ export default function RaiseLog({ rows, onDecide, isMentor }) {
             {rows.map((r) => (
               <tr key={r.id}>
                 <td className="mono">{fmtDate(r.requested_at)}</td>
+                <td>{labelOf?.(r.budget_id) ?? '—'}</td>
                 <td className="num mono">{money(r.amount_before)}</td>
                 <td className="num mono">{money(r.amount_after)}</td>
                 <td style={{ overflowWrap: 'anywhere' }}>

@@ -32,11 +32,27 @@ export function raiseContext(budget, spent) {
   }
 }
 
-/** Whether a proposed figure is a raise at all. */
+/**
+ * Whether a proposed figure is a real change.
+ *
+ * Either direction counts. Refusing a DECREASE was a mistake: while budgets are
+ * locked, an amount that turns out too high had no route at all — the
+ * over-allocated money stayed committed, distorted "remaining", and freeing it
+ * meant unlocking for everyone.
+ *
+ * Only "no change" is refused, because a request that changes nothing is a
+ * mistake rather than a decision.
+ */
 export function validateRaise(newAmount, current) {
   const next = toNumber(newAmount)
   const now = toNumber(current)
   if (!(next > 0)) return { ok: false, key: 'raiseMustBePositive' }
-  if (next <= now) return { ok: false, key: 'raiseMustBeHigher' }
-  return { ok: true, delta: roundMoney(next - now) }
+  if (next === now) return { ok: false, key: 'raiseSameAmount' }
+  return {
+    ok: true,
+    delta: roundMoney(next - now),
+    // The caller shows a different sentence for each direction; deriving it
+    // here keeps that decision out of the component.
+    direction: next > now ? 'increase' : 'decrease',
+  }
 }

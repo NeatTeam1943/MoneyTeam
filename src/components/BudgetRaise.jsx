@@ -68,6 +68,24 @@ export default function BudgetRaise({ budget, spent, isMentor, onClose, onDone }
       <div className="field">
         <label>{t('raiseTo')} (₪) *</label>
         <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
+        {/* Says which way it goes, as soon as there is a number. A request that
+            lowers a budget is legitimate — while budgets are locked it is the
+            only route to correcting an over-estimate — but it should never be
+            submitted by accident. */}
+        {(() => {
+          if (amount === '') return null
+          const v = validateRaise(amount, ctx.amount)
+          if (!v.ok) return null
+          return (
+            <p style={{
+              fontSize: 13, margin: '6px 0 0',
+              color: v.direction === 'decrease' ? 'var(--orange)' : 'var(--text-dim)',
+            }}>
+              {t(v.direction === 'decrease' ? 'raiseIsDecrease' : 'raiseIsIncrease')
+                .replace('{v}', money(Math.abs(v.delta)))}
+            </p>
+          )
+        })()}
       </div>
 
       <div className="field">

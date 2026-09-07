@@ -1,49 +1,33 @@
-Multi-select filters on the shopping list. No SQL.
+Three fixes to the multi-select. Push all of these together — one of the bugs
+was caused by pushing a subset last time.
 
-Saf is right on both counts: status was already multi-value as chips, and
-having one filter behave differently from the two beside it is worse than
-either style on its own. So all three are now the same control.
+1. "clearSelection" SHOWING AS A RAW KEY
+   The string exists in i18n.jsx and always did. What reached the site was an
+   older i18n.jsx without it — so the component asked for a key the deployed
+   dictionary had never heard of.
 
-    status      dropdown, multiple, WITH the per-status counts kept
-    priority    dropdown, multiple  (was single)
-    category    dropdown, multiple  (was single)
+   This is the second time a partial push has produced a bug that looks like a
+   code fault. i18n.jsx is in this zip; it must go with the rest.
 
-The counts survived the move deliberately. They are what tells you whether a
-status is worth ticking before you tick it, and a dropdown would have quietly
-dropped them.
+2. THE PANEL RAN OFF THE SCREEN
+   It was anchored to the trigger's inline-START and grew outward from there.
+   For the category filter, which sits toward the screen edge, that put the
+   checkboxes past the edge with no way to reach them — your second screenshot.
 
-WRITTEN, NOT INSTALLED
-The npm options bring a styling system and a few hundred kB, and this app has
-one place that needs the control. A dependency to keep current for one filter
-bar is a poor trade. It is about 90 lines.
+   Now anchored to the inline-END, so it grows INTO the page. In RTL that is
+   the right edge of the control, which is the predictable one here because
+   the filter bar always starts near the same place.
 
-TWO THINGS THAT WERE THE ACTUAL WORK
-  Keyboard and screen readers. A div that opens a list is not a control unless
-  it says so: this is a button with aria-expanded, the panel is a listbox, each
-  row is an option with aria-selected, and Escape closes it and returns focus
-  to the button — so a keyboard user is never stranded inside an open panel.
+   Long labels also wrap now instead of forcing the panel wider than the
+   screen; "צריך להמשך השנה" was being cut mid-word.
 
-  Closing on outside click uses pointerdown, not click. A click that starts
-  inside and ends outside — dragging across a label — would otherwise dismiss
-  the panel mid-interaction.
+3. HALF-WIDTH ON A PHONE MADE THEM USELESS
+   I had paired them two-per-row like the plain selects. But a multi-select
+   shows a label AND a summary — "סטטוס  ממתין לאישור, +2" — which needs about
+   200px, and half a 393px phone row is 177px. It truncated to "סטטוס ▾", which
+   says nothing about what is filtered.
 
-Also: the row owns the click, and the checkbox has pointer-events:none. Without
-that the box fires its own toggle, the two cancel out, and the option appears
-not to respond at all.
+   Full width on phones. A plain <select> survives half width because its text
+   is short; this one does not.
 
-THE SUMMARY LINE
-Two names then a count: "ממתין, אושר +2". Listing everything turns the control
-into a paragraph; a bare "3 selected" hides which three, which is usually the
-thing you want to check at a glance.
-
-CATEGORY PICKS MERGE THEIR SUBTREES
-Choosing רובוט and מדים gives everything under either, not the intersection.
-
-ONE UNRELATED FIX
-The golden-master checks read fixtures exported from a real Postgres, and this
-machine has none — so they were failing with an unexplained ENOENT that looked
-like a code fault. verify.sh now SKIPS them with a message naming what is
-missing. A check that silently passes when it cannot run is worse than one that
-fails, because it is trusted.
-
-After deploying, index.html should reference index-VBmihpbq.js.
+After deploying, index.html should reference index-cHgEvhlH.js.

@@ -819,8 +819,14 @@ table.data td.desc-cell { min-width: 12rem; }
 .multiselect-caret { flex: 0 0 auto; color: var(--text-faint); font-size: 11px; }
 
 .multiselect-panel {
-  position: absolute; z-index: 30; inset-inline-start: 0; top: calc(100% + 4px);
-  min-width: 100%; max-width: min(20rem, 90vw);
+  position: absolute; z-index: 30; top: calc(100% + 4px);
+  /* Anchored to the inline-END of the trigger. In RTL that is the right edge,
+     so the panel grows leftward INTO the page instead of off the side — which
+     is what put the category checkboxes past the screen edge, unreachable.
+     A JS reposition would handle every case, but the filter bar is always near
+     the start of the row, so the edge it needs is predictable. */
+  inset-inline-end: 0;
+  min-width: 100%; max-width: min(22rem, calc(100vw - 32px));
   max-height: 16rem; overflow-y: auto;
   background: var(--panel); border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm); box-shadow: 0 8px 24px rgba(0, 0, 0, .12);
@@ -830,8 +836,15 @@ table.data td.desc-cell { min-width: 12rem; }
 .multiselect-option {
   display: flex; align-items: center; gap: 9px;
   padding: 9px 10px; border-radius: 6px; cursor: pointer;
-  font-size: 14px; white-space: nowrap;
+  font-size: 14px;
+  /* Long category names wrap instead of forcing the panel wider than the
+     screen. "צריך להמשך השנה" was being cut mid-word. */
+  white-space: normal; overflow-wrap: anywhere;
 }
+/* The checkbox and the count keep their size; only the label gives way. */
+.multiselect-option input,
+.multiselect-count { flex: 0 0 auto; }
+.multiselect-option > span:not(.multiselect-count) { flex: 1 1 auto; min-width: 0; }
 .multiselect-option:hover, .multiselect-option:focus-visible {
   background: var(--panel-2); outline: none;
 }
@@ -848,8 +861,12 @@ table.data td.desc-cell { min-width: 12rem; }
 .multiselect-clear:hover { color: var(--text); }
 
 @media (max-width: 560px) {
-  /* Pairs with the other filters rather than claiming a whole row. */
-  .toolbar > .multiselect { flex: 1 1 calc(50% - 4px); }
+  /* Full width, not paired. A multi-select shows a LABEL and a summary of what
+     is chosen — "סטטוס  ממתין לאישור, +2" — and half a phone row truncates that
+     to the label and an arrow, which tells you nothing about the current
+     filter. A plain <select> survives half width because its text is short;
+     this one does not. */
+  .toolbar > .multiselect { flex: 1 1 100%; }
 }
 /* Pushed to the end of the row so the counts line up in a column, which is
    what makes them comparable at a glance. */

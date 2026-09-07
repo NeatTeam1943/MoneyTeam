@@ -83,6 +83,11 @@ export function filterRows(rows, f = {}) {
   const { search, statuses, priority, categories, scopes, minPrice, maxPrice, hasPrice } = f
   const statusSet = statuses?.length ? new Set(statuses) : null
   const catSet = categories?.size ? categories : null
+  // Accepts an array now that the filter is multi-select. Kept tolerant of a
+  // bare string so an old caller — or a URL carrying one value — still works.
+  const prioritySet = Array.isArray(priority)
+    ? (priority.length ? new Set(priority) : null)
+    : (priority ? new Set([priority]) : null)
   const scopeSet = scopes?.length ? new Set(scopes) : null
   const min = minPrice === '' || minPrice == null ? null : Number(minPrice)
   const max = maxPrice === '' || maxPrice == null ? null : Number(maxPrice)
@@ -90,7 +95,7 @@ export function filterRows(rows, f = {}) {
   return rows.filter((r) => {
     if (!matchesSearch(r, search)) return false
     if (statusSet && !statusSet.has(r.status)) return false
-    if (priority && r.priority_level_id !== priority) return false
+    if (prioritySet && !prioritySet.has(r.priority_level_id)) return false
     if (catSet && !catSet.has(r.category_id)) return false
     if (scopeSet && !scopeSet.has(r.team_scope || 'both')) return false
 

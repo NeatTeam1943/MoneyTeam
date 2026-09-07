@@ -798,3 +798,63 @@ table.data td.desc-cell { min-width: 12rem; }
   /* The sidebar is a scrolling row on a phone; the link joins the end of it. */
   .report-issue { margin: 0; border-top: none; flex: 0 0 auto; white-space: nowrap; }
 }
+
+/* ---------- Multi-select ---------- */
+.multiselect { position: relative; display: inline-block; min-width: 0; }
+
+.multiselect-button {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 8px 11px; border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm); background: var(--field);
+  color: var(--text); font-size: 14px; font-weight: 500;
+  text-align: start; cursor: pointer;
+}
+.multiselect-label { color: var(--text-faint); flex: 0 0 auto; }
+/* The chosen values take the space and truncate; the label and caret never do,
+   so the control cannot collapse into an unreadable stub on a narrow screen. */
+.multiselect-value {
+  flex: 1 1 auto; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.multiselect-caret { flex: 0 0 auto; color: var(--text-faint); font-size: 11px; }
+
+.multiselect-panel {
+  position: absolute; z-index: 30; inset-inline-start: 0; top: calc(100% + 4px);
+  min-width: 100%; max-width: min(20rem, 90vw);
+  max-height: 16rem; overflow-y: auto;
+  background: var(--panel); border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm); box-shadow: 0 8px 24px rgba(0, 0, 0, .12);
+  padding: 4px;
+}
+
+.multiselect-option {
+  display: flex; align-items: center; gap: 9px;
+  padding: 9px 10px; border-radius: 6px; cursor: pointer;
+  font-size: 14px; white-space: nowrap;
+}
+.multiselect-option:hover, .multiselect-option:focus-visible {
+  background: var(--panel-2); outline: none;
+}
+.multiselect-option.is-selected { font-weight: 600; }
+/* The row owns the click. Without this the checkbox fires its own toggle and
+   the two cancel out, so the option appears not to respond at all. */
+.multiselect-option input { pointer-events: none; }
+
+.multiselect-clear {
+  display: block; width: 100%; padding: 7px 10px; margin-bottom: 2px;
+  background: none; border: none; border-bottom: 1px solid var(--line);
+  color: var(--text-dim); font-size: 13px; text-align: start; cursor: pointer;
+}
+.multiselect-clear:hover { color: var(--text); }
+
+@media (max-width: 560px) {
+  /* Pairs with the other filters rather than claiming a whole row. */
+  .toolbar > .multiselect { flex: 1 1 calc(50% - 4px); }
+}
+/* Pushed to the end of the row so the counts line up in a column, which is
+   what makes them comparable at a glance. */
+.multiselect-count {
+  margin-inline-start: auto; padding-inline-start: 10px;
+  color: var(--text-faint); font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}

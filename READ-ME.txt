@@ -1,0 +1,49 @@
+Multi-select filters on the shopping list. No SQL.
+
+Saf is right on both counts: status was already multi-value as chips, and
+having one filter behave differently from the two beside it is worse than
+either style on its own. So all three are now the same control.
+
+    status      dropdown, multiple, WITH the per-status counts kept
+    priority    dropdown, multiple  (was single)
+    category    dropdown, multiple  (was single)
+
+The counts survived the move deliberately. They are what tells you whether a
+status is worth ticking before you tick it, and a dropdown would have quietly
+dropped them.
+
+WRITTEN, NOT INSTALLED
+The npm options bring a styling system and a few hundred kB, and this app has
+one place that needs the control. A dependency to keep current for one filter
+bar is a poor trade. It is about 90 lines.
+
+TWO THINGS THAT WERE THE ACTUAL WORK
+  Keyboard and screen readers. A div that opens a list is not a control unless
+  it says so: this is a button with aria-expanded, the panel is a listbox, each
+  row is an option with aria-selected, and Escape closes it and returns focus
+  to the button — so a keyboard user is never stranded inside an open panel.
+
+  Closing on outside click uses pointerdown, not click. A click that starts
+  inside and ends outside — dragging across a label — would otherwise dismiss
+  the panel mid-interaction.
+
+Also: the row owns the click, and the checkbox has pointer-events:none. Without
+that the box fires its own toggle, the two cancel out, and the option appears
+not to respond at all.
+
+THE SUMMARY LINE
+Two names then a count: "ממתין, אושר +2". Listing everything turns the control
+into a paragraph; a bare "3 selected" hides which three, which is usually the
+thing you want to check at a glance.
+
+CATEGORY PICKS MERGE THEIR SUBTREES
+Choosing רובוט and מדים gives everything under either, not the intersection.
+
+ONE UNRELATED FIX
+The golden-master checks read fixtures exported from a real Postgres, and this
+machine has none — so they were failing with an unexplained ENOENT that looked
+like a code fault. verify.sh now SKIPS them with a message naming what is
+missing. A check that silently passes when it cannot run is worse than one that
+fails, because it is trusted.
+
+After deploying, index.html should reference index-VBmihpbq.js.

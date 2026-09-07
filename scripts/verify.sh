@@ -25,9 +25,18 @@ step "build"                 npm run build
 step "lint (no-undef etc.)"  npm run lint
 step "i18n keys"             node scripts/check-i18n.mjs
 step "no raw money reads"    node scripts/check-approval-filter.mjs
+# The golden masters need a dataset exported from a real Postgres (see
+# scripts/README.md). When it is absent the run must SAY so rather than report
+# a pass — a check that silently skips is worse than one that fails, because it
+# is trusted.
+if [ -f /tmp/gm.json ] && [ -f /tmp/gm2.json ] && [ -f /tmp/gm3.json ]; then
 step "golden master budgets" node scripts/golden-master-budgets.mjs
 step "golden master ledger"  node scripts/golden-master-ledger.mjs
 step "golden master shop+sim" node scripts/golden-master-shopping-sim.mjs
+else
+  printf '  %-34s%s\n' "golden masters" "SKIPPED — no /tmp/gm*.json fixtures"
+  printf '  %-34s%s\n' "" "see scripts/README.md to export one"
+fi
 step "money audit (shared/split)" bash scripts/audit-money.sh
 step "cache invalidation" bash scripts/check-cache.sh
 step "copy matches behaviour" node scripts/check-stale-copy.mjs

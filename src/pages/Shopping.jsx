@@ -14,6 +14,7 @@ import TransactionForm from '../components/TransactionForm'
 import { useTeamScope } from '../context/TeamScopeContext'
 import { TeamScopeBadge } from '../components/TeamScope'
 import SortControls from '../components/SortControls'
+import MultiSelect from '../components/MultiSelect'
 import DetailPanel from '../components/DetailPanel'
 import { filterRows, sortRows } from '../domain/shopping'
 import { splitByExclusivity } from '../lib/teamScope'
@@ -67,8 +68,8 @@ export default function Shopping() {
   // Defaults to everything still in flight. A list you open to see what is
   // outstanding should not open full of items that already arrived.
   const [fStatuses, setFStatuses] = useState(() => [...DEFAULT_SHOPPING_STATUSES])
-  const [fPriority, setFPriority] = useState('')
-  const [fCategory, setFCategory] = useState('')
+  const [fPriority, setFPriority] = useState([])
+  const [fCategory, setFCategory] = useState([])
   const [fScopes, setFScopes] = useState([])
   const [fHasPrice, setFHasPrice] = useState('')
 
@@ -143,7 +144,11 @@ export default function Shopping() {
         priority: fPriority,
         // Picking a parent category is expected to include its children; the
         // subtree is expanded here so the filter itself needs no tree.
-        categories: fCategory ? lk.descendantsOf(fCategory) : null,
+        // Each pick brings its own subtree, then they are merged — so choosing
+        // רובוט and מדים gives everything under either, not their intersection.
+        categories: fCategory.length
+          ? new Set(fCategory.flatMap((id) => [...lk.descendantsOf(id)]))
+          : null,
         scopes: fScopes,
         hasPrice: fHasPrice,
       }),
@@ -378,40 +383,33 @@ export default function Shopping() {
       </div>
 
       <div className="toolbar" style={{ marginTop: 18 }}>
-        {/* One toggle per status rather than a dropdown: the useful question
-            is "which of these am I looking at", and a single-select cannot
-            express it. Each chip carries its own count so the effect of a
-            click is visible before making it. */}
-        <div className="status-chips">
-          {STATUSES.map((st) => {
-            const on = fStatuses.includes(st)
-            const n = enriched.filter((r) => r.status === st).length
-            return (
-              <button key={st} type="button"
-                className={'chip' + (on ? ' chip-on' : '')}
-                aria-pressed={on}
-                onClick={() => setFStatuses(on
-                  ? fStatuses.filter((x) => x !== st)
-                  : [...fStatuses, st])}>
-                {t(st)} <span className="chip-count">{n}</span>
-              </button>
-            )
-          })}
-          <button type="button" className="btn btn-ghost btn-sm"
-            onClick={() => setFStatuses(fStatuses.length === STATUSES.length ? [] : [...STATUSES])}>
-            {fStatuses.length === STATUSES.length ? t('clearFilter') : t('all')}
-          </button>
-        </div>
-        <select value={fPriority} onChange={(e) => setFPriority(e.target.value)}>
-          <option value="">{t('priority')}: {t('all')}</option>
-          {lk.levels.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-        </select>
-        <select value={fCategory} onChange={(e) => setFCategory(e.target.value)}>
-          <option value="">{t('category')}: {t('all')}</option>
-          {lk.categoryTree.map((c) => (
-            <option key={c.id} value={c.id}>{c.path || c.name}</option>
-          ))}
-        </select>
+        {/* A dropdown like the others, not chips. Three filters that behave
+            three different ways is harder to use than one that behaves one
+            way, and a row of chips beside two dropdowns reads as an
+            accident. The per-status COUNT survives the move — it is what
+            tells you whether a status is worth ticking before you tick it. */}
+        <MultiSelect
+          label={t('status')}
+          options={STATUSES.map((st) => ({
+            value: st,
+            label: t(st),
+            count: enriched.filter((r) => r.status === st).length,
+          }))}
+          selected={fStatuses}
+          onChange={setFStatuses}
+        />
+        <MultiSelect
+          label={t('priority')}
+          options={lk.levels.map((l) => ({ value: l.id, label: l.name }))}
+          selected={fPriority}
+          onChange={setFPriority}
+        />
+        <MultiSelect
+          label={t('category')}
+          options={lk.categoryTree.map((c) => ({ value: c.id, label: c.path || c.name }))}
+          selected={fCategory}
+          onChange={setFCategory}
+        />
         <select value={fHasPrice} onChange={(e) => setFHasPrice(e.target.value)}>
           <option value="">{t('price')}: {t('all')}</option>
           <option value="yes">{t('withPrice')}</option>

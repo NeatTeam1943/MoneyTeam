@@ -826,6 +826,10 @@ table.data td.desc-cell { min-width: 12rem; }
      A JS reposition would handle every case, but the filter bar is always near
      the start of the row, so the edge it needs is predictable. */
   inset-inline-end: 0;
+  /* max-content so the panel takes the width its longest label needs, capped
+     by the viewport. Sizing it to the TRIGGER made it far too narrow — the
+     trigger is one filter in a row, the labels inside are full status names. */
+  width: max-content;
   min-width: 100%; max-width: min(22rem, calc(100vw - 32px));
   max-height: 16rem; overflow-y: auto;
   background: var(--panel); border: 1px solid var(--line-strong);
@@ -837,14 +841,16 @@ table.data td.desc-cell { min-width: 12rem; }
   display: flex; align-items: center; gap: 9px;
   padding: 9px 10px; border-radius: 6px; cursor: pointer;
   font-size: 14px;
-  /* Long category names wrap instead of forcing the panel wider than the
-     screen. "צריך להמשך השנה" was being cut mid-word. */
-  white-space: normal; overflow-wrap: anywhere;
+  /* Wraps between WORDS. `overflow-wrap: anywhere` was worse than the problem
+     it solved — it let the browser break inside a word, so "ממתין לאישור"
+     rendered as ממת/ין/לאי/שור, one or two letters per line. A label should
+     wrap at spaces or make the panel wider; it should never be shredded. */
+  white-space: normal;
 }
 /* The checkbox and the count keep their size; only the label gives way. */
 .multiselect-option input,
 .multiselect-count { flex: 0 0 auto; }
-.multiselect-option > span:not(.multiselect-count) { flex: 1 1 auto; min-width: 0; }
+.multiselect-option > span:not(.multiselect-count) { flex: 0 1 auto; min-width: 0; }
 .multiselect-option:hover, .multiselect-option:focus-visible {
   background: var(--panel-2); outline: none;
 }
@@ -868,10 +874,14 @@ table.data td.desc-cell { min-width: 12rem; }
      this one does not. */
   .toolbar > .multiselect { flex: 1 1 100%; }
 }
-/* Pushed to the end of the row so the counts line up in a column, which is
-   what makes them comparable at a glance. */
+/* Sits right after the label, not pushed to the far edge.
+   `margin-inline-start: auto` lined the counts up in a column, which reads well
+   in a wide list — but the panel is sized to its LONGEST label, so every
+   shorter row got the whole difference as empty space. A count stranded across
+   a gap stops looking like it belongs to the label beside it.
+   tabular-nums still keeps 3 and 25 the same width. */
 .multiselect-count {
-  margin-inline-start: auto; padding-inline-start: 10px;
+  margin-inline-start: 4px;
   color: var(--text-faint); font-size: 12px;
   font-variant-numeric: tabular-nums;
 }

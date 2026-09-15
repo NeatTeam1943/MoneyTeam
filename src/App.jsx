@@ -53,11 +53,15 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/transactions" element={<Transactions />} />
-          {/* Guests get these two and nothing else. The catch-all sends any
+          {/* Budgets are the context that makes the other two pages mean
+              anything: "spent 26,000" says nothing without the plan beside
+              it. Read-only for a guest — every action on the page is behind
+              canBudget, and budgets_guest is a view with no write path. */}
+          <Route path="/budgets" element={<Budgets />} />
+          {/* The rest are members-only. The catch-all sends any
               hand-typed URL back to the dashboard, and the database refuses
               the queries regardless — this is convenience, not the control. */}
           {!isParent && <>
-            <Route path="/budgets" element={<Budgets />} />
             <Route path="/shopping" element={<Shopping />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/simulation" element={<Simulation />} />

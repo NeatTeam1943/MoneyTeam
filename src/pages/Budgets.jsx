@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts'
 import { supabase, withTimeout } from '../lib/supabase'
 import { fetchCached, mutate, invalidate } from '../lib/seasonCache'
+import { exportBudgets } from '../lib/export'
 import { useRefreshOnReturn } from '../lib/useRefreshOnReturn'
 import { useAuth } from '../context/AuthContext'
 import { useSeason } from '../context/SeasonContext'
@@ -49,9 +50,9 @@ function Stat({ k, v, c }) {
 
 export default function Budgets() {
   const { t } = useI18n()
-  const { canBudget, isMentor, canPropose, session } = useAuth()
+  const { canBudget, isMentor, canPropose, isParent, session } = useAuth()
   const uid = session?.user?.id
-  const { activeId } = useSeason()
+  const { activeId, active } = useSeason()
   const toast = useToast()
   const lk = useLookups()
   const ts = useTeamScope()
@@ -71,16 +72,33 @@ export default function Budgets() {
     if (!activeId) { setLoading(false); return }
     if (budgets.length === 0) setLoading(true)   // only spinner when nothing is showing yet
     try {
+      // A guest reads the same figures through views that expose only what a
+      // guest may see. Separate objects rather than relaxed policies, so the
+      // member-facing tables keep exactly the rules they had.
       const [b, tl, sh, gl, bal, rq, sn] = await withTimeout(Promise.all([
-        fetchCached('budgets', { seasonId: activeId }),
-        supabase.from('ledger_lines_full').select('amount,budget_id,team_scope,category_id,season_id,tx_team_scope').eq('season_id', activeId),
-        supabase.from('shopping_items').select('est_price,quantity,category_id,status,team_scope').eq('season_id', activeId),
+        isParent
+          ? supabase.from('budgets_guest').select('*').eq('season_id', activeId)
+          : fetchCached('budgets', { seasonId: activeId }),
+        isParent
+          ? supabase.from('ledger_lines_guest').select('amount,budget_id,team_scope,category_id,season_id,tx_team_scope').eq('season_id', activeId)
+          : supabase.from('ledger_lines_full').select('amount,budget_id,team_scope,category_id,season_id,tx_team_scope').eq('season_id', activeId),
+        // Skipped for a guest rather than attempted and refused: an RLS denial
+        // would abort the whole Promise.all and the page would show nothing.
+        // A guest sees the plan and the spend; the internal workings — open
+        // requests, reserved money, pending changes, the lock — are not theirs.
+        isParent ? Promise.resolve({ data: [] })
+          : supabase.from('shopping_items').select('est_price,quantity,category_id,status,team_scope').eq('season_id', activeId),
+        isParent ? Promise.resolve({ data: [] })
           // Goals span seasons — deliberately no season filter.
-          supabase.from('savings_goals').select('reserved,team_scope,archived_at'),
-          supabase.from('account_balances').select('*'),
-          supabase.from('budget_raise_requests').select('*').eq('season_id', activeId)
+          : supabase.from('active_goals').select('reserved,team_scope,archived_at'),
+        isParent
+          ? supabase.from('account_balances_guest').select('*')
+          : supabase.from('account_balances').select('*'),
+        isParent ? Promise.resolve({ data: [] })
+          : supabase.from('budget_raise_requests').select('*').eq('season_id', activeId)
             .order('requested_at', { ascending: false }),
-          supabase.from('seasons').select('budgets_locked').eq('id', activeId).single(),
+        isParent ? Promise.resolve({ data: null })
+          : supabase.from('seasons').select('budgets_locked').eq('id', activeId).single(),
       ]))
       if (!b.error) setBudgets(b.data || [])
       if (!tl.error) setExpenses(tl.data || []) // expense LINES (each charges a budget)
@@ -223,6 +241,13 @@ export default function Budgets() {
     return `/transactions?${p.toString()}`
   }
 
+  function doExportBudgets() {
+    exportBudgets(chartRows, {
+      seasonName: active?.name,
+      scope: { all: ts.all, frc: ts.frc, ftc: ts.ftc },
+    })
+  }
+
   async function toggleLock() {
     const { error } = await supabase.from('seasons')
       .update({ budgets_locked: !locked, budgets_locked_at: new Date().toISOString() })
@@ -277,6 +302,9 @@ export default function Budgets() {
           spending is unaffected. Stated plainly so a disabled edit button reads
           as a rule rather than a fault. */}
       <div className="toolbar">
+        {/* Not behind canBudget: exporting reads what is already on screen, so
+            anyone who can see the page can take a copy of it. */}
+        <button className="btn btn-sm" onClick={doExportBudgets}>{t('exportBudgets')}</button>
         {isMentor && (
           <button className="btn btn-sm" onClick={toggleLock}>
             {locked ? t('unlockBudgets') : t('lockBudgets')}

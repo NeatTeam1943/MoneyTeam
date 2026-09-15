@@ -101,7 +101,7 @@ export default function Reports() {
         supabase.from('ledger_lines_full').select('transaction_id,amount,budget_id,description,team_scope,category_id,season_id,date,tx_team_scope').eq('season_id', activeId),
         fetchCached('budgets', { seasonId: activeId }),
         fetchCached('shopping_items', { seasonId: activeId }),
-        supabase.from('savings_goals').select('*'),
+        supabase.from('active_goals').select('*'),
         // Approved raises only: the report explains why a ceiling moved,
         // and a rejected request did not move one.
         supabase.from('budget_raise_requests').select('*').eq('season_id', activeId)

@@ -15,6 +15,7 @@ import { money, amountColor, signedColor, lineTotal, qtyOf } from '../lib/format
 import { projectAccounts, projectBudgets, newlyNegative, newlyOver as newlyOverOf } from '../domain/simulation'
 import { sortRows } from '../domain/shopping'
 import { goalImpact, goalsAfterPlan } from '../domain/goals'
+import SavedSimulations from '../components/SavedSimulations'
 
 import { OPEN_STATUSES } from '../domain/constants'
 
@@ -30,7 +31,7 @@ export default function Simulation() {
   const { t } = useI18n()
   const { session } = useAuth()
   const uid = session?.user?.id
-  const { activeId } = useSeason()
+  const { activeId, active } = useSeason()
   const toast = useToast()
   const lk = useLookups()
   const ts = useTeamScope()
@@ -52,6 +53,42 @@ export default function Simulation() {
   // ad-hoc row, NOT saved as a transaction — the whole point is to see what the
   // purchase would do before committing to it.
   const [params, setParams] = useSearchParams()
+
+  // Restores the TYPED parts only and leaves the list picks empty — the saved
+  // row holds nothing else, on purpose.
+  const loadSaved = (row) => {
+    // `_pickedIds` is set by a re-apply, which has already worked out which
+    // saved rows still exist. Opening WITHOUT re-applying restores the ids as
+    // saved — the ones that are gone simply will not match anything on the
+    // list, which is the honest result and costs nothing to show.
+    const ids = row._pickedIds
+      ?? (row.picked || []).map((p) => p.item_id).filter(Boolean)
+
+    setScenario((sc) => ({
+      ...sc,
+      extras: row.extras || [],
+      incomes: row.incomes || [],
+      fundFrom: row.fund_from || sc.fundFrom,
+      pickedIds: ids,
+      // Per-item funding travels with the frozen rows.
+      fundBy: Object.fromEntries((row.picked || [])
+        .filter((p) => p.fund_account_id)
+        .map((p) => [p.item_id, p.fund_account_id])),
+      guessPrice: {},
+    }))
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  // A shared link. Fetched once; if the row is gone the page just carries on
+  // rather than showing an error for something the sender deleted.
+  useEffect(() => {
+    const id = params.get('sim')
+    if (!id) return
+    supabase.from('saved_simulations').select('*').eq('id', id).maybeSingle()
+      .then(({ data }) => { if (data) loadSaved(data) })
+    setParams(new URLSearchParams(), { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   useEffect(() => {
     const amount = Number(params.get('amount'))
     if (!(amount > 0)) return
@@ -98,7 +135,7 @@ export default function Simulation() {
         fetchCached('budgets', { seasonId: activeId }),
         supabase.from('ledger_lines_full').select('amount,budget_id,team_scope,category_id,season_id,tx_team_scope').eq('season_id', activeId),
         supabase.from('account_balances').select('*'),
-        supabase.from('savings_goals').select('id,name,target,reserved,team_scope,archived_at,target_date'),
+        supabase.from('active_goals').select('id,name,target,reserved,team_scope,archived_at,target_date'),
       ]))
       if (!it.error) setItems(it.data || [])
       if (!bg.error) setBudgets(bg.data || [])
@@ -264,6 +301,27 @@ export default function Simulation() {
       {/* One line, not a panel. The previous version was a full bordered box
           with a heading and a paragraph — an explanation the size of a warning,
           for a thing that is working correctly. */}
+      {/* Only on paper. A shared PDF without the season and the date is a page
+          of numbers nobody can place — the same reason every export carries a
+          provenance sheet. */}
+      <div className="print-only" style={{ marginBottom: 14 }}>
+        <div style={{ fontSize: 12, letterSpacing: '.08em', color: '#666' }}>NEAT TEAM 1943</div>
+        <div style={{ fontSize: 20, fontWeight: 700 }}>{t('simulation')} · {active?.name || ''}</div>
+        <div style={{ fontSize: 12, color: '#666' }}>
+          {new Date().toLocaleDateString('he-IL')}
+        </div>
+      </div>
+
+      <div className="no-print">
+        <SavedSimulations
+          seasonId={activeId}
+          scenario={scenario}
+          onLoad={loadSaved}
+          liveItems={items}
+          balances={balances}
+        />
+      </div>
+
       {scenarioDirty && (
         <p style={{
           display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap',
@@ -465,6 +523,9 @@ export default function Simulation() {
           title={t('defaultFundHint')}>
           {lk.accountsActive.map((a) => <option key={a.id} value={a.id}>{t('defaultFund')}: {a.name}</option>)}
         </select>
+        {/* window.print(): the browser's own PDF export. Every phone has it,
+            the output has selectable text, and it costs no dependency. */}
+        <button className="btn btn-sm" onClick={() => window.print()}>{t('shareAsPdf')}</button>
         <button className="btn btn-sm" onClick={pickAll}>{t('selectAll')}</button>
         <button className="btn btn-sm" onClick={pickNone}>{t('selectNone')}</button>
         {lk.levels.map((l) => (

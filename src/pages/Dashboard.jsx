@@ -11,7 +11,7 @@ import { useAuth } from '../context/AuthContext'
 import { useI18n } from '../lib/i18n'
 import { useLookups } from '../lib/useLookups'
 import { spendableAfterGoals } from '../domain/goals'
-import { money, monthKey, typeColor, amountColor } from '../lib/format'
+import { money, monthKey, typeColor, amountColor, lineTotal } from '../lib/format'
 import { useTeamScope } from '../context/TeamScopeContext'
 import { linesByTransaction, attributableAmount, touchesScope, exclusiveVsShared } from '../lib/teamScope'
 import ScopeNotice from '../components/ScopeNotice'
@@ -55,7 +55,7 @@ export default function Dashboard() {
     // What the accounts held the day this season opened. Derived, not
     // stored: the sum of every approved movement before the start date,
     // so it cannot drift when someone back-dates a transaction.
-    supabase.from('savings_goals').select('reserved,team_scope')
+    supabase.from('active_goals').select('reserved,team_scope')
       .then(({ data, error }) => { if (!error) setGoals(data || []) })
     supabase.rpc('season_opening_balances', { p_season_id: activeId })
       .then(({ data, error }) => { if (!error) setOpening(data || []) })
@@ -66,7 +66,12 @@ export default function Dashboard() {
       .then(({ data, error }) => { if (!error) setAllLines(data || []) })
     // shopping items still waiting to be bought: not yet linked to a purchase
     // and not cancelled/received.
-    supabase.from('shopping_items').select('id,status,transaction_id,team_scope').eq('season_id', activeId)
+    // est_price and quantity too, so the dashboard can show WHAT the open
+      // requests come to and not only how many there are. A count answers
+      // "is there a queue"; the total answers "can we afford it".
+      supabase.from('shopping_items')
+        .select('id,status,transaction_id,team_scope,est_price,quantity')
+        .eq('season_id', activeId)
       .then(({ data }) => setWaitingRows(data || []))
   }
 
@@ -92,6 +97,14 @@ export default function Dashboard() {
   const waiting = useMemo(() => waitingRows.filter(
     (s) => !s.transaction_id && s.status !== 'cancelled' && s.status !== 'received' && ts.matches(s.team_scope)
   ).length, [waitingRows, ts])
+
+  // What the open requests come to. Same rows the count uses, so the two can
+  // never disagree about which items are "waiting" — and priced with lineTotal
+  // so a quantity of 10 is not counted as one.
+  const requestedTotal = useMemo(() => waitingRows
+    .filter((s) => !s.transaction_id && s.status !== 'cancelled'
+      && s.status !== 'received' && ts.matches(s.team_scope))
+    .reduce((sum, r) => sum + lineTotal(r), 0), [waitingRows, ts])
 
   const totals = useMemo(() => totalsOf(rows, ts.all), [rows, ts])
 
@@ -175,6 +188,9 @@ export default function Dashboard() {
           c={totals.net === null ? 'var(--text-faint)' : (totals.net >= 0 ? 'var(--ok)' : 'var(--danger)')} />
         {!isParent && <Stat k={t('overBudget')} v={overBudget.hasBudget ? money(overBudget.over) : '—'} c={overBudget.over > 0 ? 'var(--danger)' : 'var(--ok)'} />}
         {!isParent && <Stat k={t('waitingToBuy')} v={String(waiting)} c="var(--out)" />}
+        {!isParent && requestedTotal > 0 && (
+          <Stat k={t('requestedTotal')} v={money(requestedTotal)} c="var(--out)" />
+        )}
       </div>
 
       <div className="section-title">{t('accountBalances')}</div>

@@ -16,6 +16,7 @@ import { totalsOf, overBudgetOf } from '/tmp/A_ledger.mjs'
 import { linesByTransaction, attributableAmount, touchesScope, spendByScope, exclusiveVsShared, splitByExclusivity } from '/tmp/A_ts.mjs'
 import { projectBudgets, newlyOver } from '/tmp/A_simulation.mjs'
 import { spendableAfterGoals, goalImpact, budgetFundingGap } from '/tmp/A_goals.mjs'
+import { reapply, snapshotTotal } from '/tmp/A_simSnapshot.mjs'
 
 const f = (n) => Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 let fails = 0
@@ -204,7 +205,40 @@ for (const [lbl, picked, wantEx, wantSh] of [
 {
   {
   {
-  console.log('\n=== reserved money is a THIRD quantity ===')
+  {
+  console.log('\n=== a saved simulation is a snapshot, not pointers ===')
+  const snap = [
+    { item_id: 'a', name: 'Kraken', est_price: 450, quantity: 4 },
+    { item_id: 'b', name: 'ESC',    est_price: 300, quantity: 2 },
+    { item_id: 'c', name: 'Tape',   est_price: 60,  quantity: 1 },
+    { item_id: 'd', name: 'Gone',   est_price: 100, quantity: 1 },
+  ]
+  const live = [
+    { id: 'a', est_price: 450, quantity: 4, status: 'approved' },
+    { id: 'b', est_price: 390, quantity: 2, status: 'approved' },
+    { id: 'c', est_price: 60,  quantity: 1, status: 'received', transaction_id: 't1' },
+  ]
+  check('snapshot keeps its own total', snapshotTotal(snap), 2560)
+
+  const r = reapply(snap, live)
+  check('unchanged rows carry over', r.matched.length, 1)
+  check('a changed price is reported, not hidden', r.changed.length, 1)
+  // Separated on purpose: "already bought" and "gone" mean opposite things.
+  check('bought is not counted as missing', r.bought.length, 1)
+  check('deleted is missing', r.missing.length, 1)
+  check('delta counts only rows that carry', r.deltaTotal, 180)
+  check('carried picks exclude bought and missing', r.pickedIds.length, 2)
+
+  const same = reapply(snap, [
+    { id: 'a', est_price: 450, quantity: 4, status: 'approved' },
+    { id: 'b', est_price: 300, quantity: 2, status: 'approved' },
+    { id: 'c', est_price: 60,  quantity: 1, status: 'approved' },
+    { id: 'd', est_price: 100, quantity: 1, status: 'approved' },
+  ])
+  check('nothing changed -> clean', same.clean ? 1 : 0, 1)
+}
+
+console.log('\n=== reserved money is a THIRD quantity ===')
   const goals = [{ reserved: 5000 }, { reserved: 4000 }]
   const sp = spendableAfterGoals(17631.95, goals)
   check('available = balance - reserved', sp.available, 8631.95)

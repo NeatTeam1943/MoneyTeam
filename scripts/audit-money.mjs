@@ -17,6 +17,7 @@ import { linesByTransaction, attributableAmount, touchesScope, spendByScope, exc
 import { projectBudgets, newlyOver } from '/tmp/A_simulation.mjs'
 import { spendableAfterGoals, goalImpact, budgetFundingGap } from '/tmp/A_goals.mjs'
 import { reapply, snapshotTotal } from '/tmp/A_simSnapshot.mjs'
+import { aggregate } from '/tmp/A_aggregate.mjs'
 
 const f = (n) => Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 let fails = 0
@@ -206,7 +207,31 @@ for (const [lbl, picked, wantEx, wantSh] of [
   {
   {
   {
-  console.log('\n=== a saved simulation is a snapshot, not pointers ===')
+  {
+  console.log('\n=== export totals split across lines, not lost to "—" ===')
+  // A split purchase carries no category on the header, so aggregating on the
+  // header alone put every split under "—" — which was the whole sheet.
+  const rows = [
+    { id: 't1', type: 'expense', amount: 9200, categoryName: '' },
+    { id: 't2', type: 'expense', amount: 1500, categoryName: 'מדים' },
+  ]
+  const lines = { t1: [
+    { amount: 6000, categoryName: 'מנועים' },
+    { amount: 3200, categoryName: 'אלקטרוניקה' },
+  ] }
+
+  const split = aggregate(rows, 'categoryName', { lines, lineKey: 'categoryName' })
+  check('a split purchase becomes its parts', split.length, 3)
+  check('nothing is left unnamed', split.filter((r) => r.Name === '—').length, 0)
+  // The property that matters: splitting must not change the money.
+  check('total is preserved', split.reduce((s, r) => s + r.Total, 0), 10700)
+
+  // Income has one source per receipt, so it must NOT be split.
+  const noLines = aggregate(rows, 'categoryName')
+  check('without lineKey the header is used', noLines.length, 2)
+}
+
+console.log('\n=== a saved simulation is a snapshot, not pointers ===')
   const snap = [
     { item_id: 'a', name: 'Kraken', est_price: 450, quantity: 4 },
     { item_id: 'b', name: 'ESC',    est_price: 300, quantity: 2 },

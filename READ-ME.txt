@@ -1,40 +1,40 @@
-The simulation PDF, rebuilt. No SQL.
+Everything outstanding, in one zip. No SQL — 44, 45 and 46 have all been run.
 
-WHAT WAS WRONG
-I printed the working screen with its controls hidden. That was the wrong idea,
-not a styling miss: the screen exists to BUILD a plan — checkboxes, filter
-chips, a selection table — so printing it produced a page of tick boxes with
-truncated columns, no totals, no balances, and nothing about what the plan
-actually does.
+THE SIMULATION PDF IS NOT HERE BECAUSE IT IS ALREADY ON MAIN
+SimulationPrint.jsx, its wiring in Simulation.jsx and the 23 print rules in
+index.css are all deployed. There is nothing left to send for it — it did not
+appear in the diff because there is no difference.
 
-NOW
-A separate document. The working view is hidden outright when printing; the
-document is the only thing on the page.
+════════════════════════════════════════════════════════════════════
+WHAT IS IN HERE
+════════════════════════════════════════════════════════════════════
+src/components/Layout.jsx
+    The guest nav list had only Dashboard and Transactions. The budgets ROUTE
+    was opened to guests last round but nothing pointed at it, so the page
+    existed with no way in. This is the only file needed to make guest budgets
+    work — migration 44 is already applied.
 
-Ordered by what a reader asks first:
+src/lib/export.js
+  · "By category" split across LINES rather than reading the transaction
+    header. A split purchase has no category of its own, so every one landed
+    under "—" — which was the whole sheet, one unnamed row holding ₪37,603.64.
+    The totals reconcile exactly either way: nothing double-counted, nothing
+    dropped.
+  · The Payer column is omitted for non-mentors instead of exported as a
+    column of '***'. The database already masked the name, so this was noise
+    rather than a leak — but a column of asterisks takes width and answers
+    nothing.
 
-  1. the cost           planned spend, expected income, projected total —
-                        as a band across the top, so the figure is the first
-                        thing the eye lands on rather than a row in a table
-  2. what it breaks     accounts going negative, budgets going over. Before the
-                        itemisation, because if a plan sends an account
-                        negative that is the thing to say first
-  3. account balances   current, change, projected
-  4. goals after it     target, what survives, what is still short
-  5. the items          last. No checkboxes, no status chips, no links — a
-                        printed page cannot be clicked, and every one of those
-                        was noise in the first attempt
+src/pages/Transactions.jsx
+  · Passes the split lines to the export, and canSeePayer.
+  · The "download all receipts" button is hidden from guests. The receipt
+    column was already hidden from them on screen, so the bulk download was a
+    way around exactly what that hiding was for — and a receipt carries names,
+    addresses and card digits, more than the row it belongs to.
 
-Plus a header with the team, season and date, and a footer saying it is a
-projection and nothing was recorded — a shared PDF of figures that look like
-transactions is worth labelling.
+scripts/
+    Two new checks, each proven by sabotage: the export must not write an
+    unguarded Payer column, and aggregate must preserve the total when it
+    splits across lines.
 
-ONE BUG CAUGHT WHILE BUILDING IT
-The two warning strings take {a} and {b} as placeholders, and I had written
-{n}. It would have printed "חשבון {a} יורד למינוס" literally. Checked the
-actual strings rather than assuming, and fixed.
-
-Still window.print(): no dependency, real selectable text, works on every
-phone. Only what it prints has changed.
-
-After deploying, index.html should reference index-D3s4eWxZ.js.
+After deploying, index.html should reference index-BudnHXX4.js.

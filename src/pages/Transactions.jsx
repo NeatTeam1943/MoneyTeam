@@ -293,6 +293,20 @@ export default function Transactions() {
       seasonName: active?.name,
       periodLabel: from || to ? `${from || '…'}_${to || '…'}` : active?.name,
       accounts: balances.map((b) => ({ name: b.name, balance: b.balance })),
+      // The exported workbook should carry exactly what this person can see on
+      // screen — the payer column is hidden from non-mentors there, so it is
+      // left out of the file too rather than exported as a column of '***'.
+      canSeePayer: isMentor,
+      // The split lines, each with its category resolved. Without these the
+      // "by category" sheet reads the header — which is empty on every split
+      // purchase — and every one lands under "—".
+      txLines: Object.fromEntries(Object.entries(txLines).map(([id, ls]) => [
+        id,
+        ls.map((l) => ({
+          ...l,
+          categoryName: lk.categoryName[l.category_id] || '',
+        })),
+      ])),
     })
   }
 
@@ -340,9 +354,14 @@ export default function Transactions() {
         <DateField value={to} onChange={(e) => setTo(e.target.value)} title={t('date')} />
         <div className="spacer" />
         <button className="btn" onClick={doExport}>{t('export')}</button>
-        <button className="btn" onClick={doReceiptsZip} disabled={!!zipping}>
-          {zipping ? `${t('downloadReceipts')} ${zipping}` : t('downloadReceipts')}
-        </button>
+        {/* The receipt column is hidden from guests on screen, so the bulk
+            download must not be the way around that. A receipt carries names,
+            addresses and card digits — more than the row it belongs to. */}
+        {!isParent && (
+          <button className="btn" onClick={doReceiptsZip} disabled={!!zipping}>
+            {zipping ? `${t('downloadReceipts')} ${zipping}` : t('downloadReceipts')}
+          </button>
+        )}
         {canPropose && (
           <button className="btn btn-primary" onClick={() => { setEditing(null); setShowForm(true) }}>
             + {isMentor ? t('add') : t('proposeExpense')}

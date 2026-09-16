@@ -18,6 +18,10 @@ export default function Layout({ children }) {
     ? [
       { to: '/', key: 'dashboard' },
       { to: '/transactions', key: 'transactions' },
+      // The route was opened to guests but this list was not, so the page
+      // existed with no way to reach it. Budgets are what make the other two
+      // mean anything — "spent 26,000" says nothing without the plan.
+      { to: '/budgets', key: 'budgets' },
     ]
     : [
       { to: '/', key: 'dashboard' },

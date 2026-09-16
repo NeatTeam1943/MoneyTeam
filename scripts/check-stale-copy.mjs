@@ -84,6 +84,17 @@ for (const p of spendPaths) {
   }
 }
 
-bad += inlineSize + lockLeak
+// An export must not carry a field the screen hides from that reader. The
+// database masks payer_display to '***' for non-mentors, so this one is about
+// noise rather than a leak — but the same pattern with an UNMASKED field would
+// be a real leak, and this is the place to catch it.
+let unguardedPayer = 0
+for (const _m of src('src/lib/export.js').matchAll(/^\s*Payer:/gm)) {
+  unguardedPayer++
+  console.log('  UNGUARDED Payer COLUMN in src/lib/export.js')
+  console.log('         gate it on meta.canSeePayer — the screen hides it from non-mentors')
+}
+
+bad += inlineSize + lockLeak + unguardedPayer
 console.log(bad ? `\n  ${bad} problem(s)` : '  no stale strings')
 process.exit(bad ? 1 : 0)

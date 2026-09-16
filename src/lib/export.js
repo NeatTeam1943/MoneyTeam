@@ -104,7 +104,12 @@ export function exportTransactions(rows, meta = {}) {
     Vendor: r.vendor || '',
     Description: r.description || '',
     Budget: r.budgetName || '',
-    Payer: r.payer_display || '',
+    // Only where the reader may actually see it. The database already
+    // masks payer_display to '***' for anyone but a mentor, so there was
+    // no leak — but a column that is asterisks all the way down is noise:
+    // it takes width and answers nothing. Omitted entirely instead, which
+    // is what the on-screen table already does.
+    ...(meta.canSeePayer ? { Payer: r.payer_display || '' } : {}),
     'Receipt ID': r.receipt_no || '',   // matches the filename inside the receipts ZIP
     Notes: r.notes || '',
   }))
@@ -112,7 +117,8 @@ export function exportTransactions(rows, meta = {}) {
   XLSX.utils.book_append_sheet(wb, sheet(txSheet, { Amount: 'money', Date: 'date' }), 'Transactions')
 
   // Summary by category (real expenses only; equipment donations excluded)
-  const byCat = aggregate(rows.filter((r) => r.type === 'expense'), 'categoryName')
+  const byCat = aggregate(rows.filter((r) => r.type === 'expense'), 'categoryName',
+    { lines: meta.txLines, lineKey: 'categoryName' })
   XLSX.utils.book_append_sheet(wb, sheet(byCat, { Total: 'money' }), 'By category')
 
   // Summary by source (cash income only; equipment donations excluded)
@@ -129,12 +135,38 @@ export function exportTransactions(rows, meta = {}) {
   XLSX.writeFile(wb, `frc-finance_${label}_${stamp}.xlsx`)
 }
 
-function aggregate(rows, key) {
+/**
+ * Totals by a field, splitting a transaction across its LINES where it has
+ * them.
+ *
+ * A split purchase carries no category on the header — the categories are on
+ * the lines, one per part. Reading the header alone put every split purchase
+ * under "—" and, because most purchases here are split, that was the entire
+ * sheet: one unnamed row holding everything.
+ *
+ * `lineKey` names the per-line field to use. Without it the function behaves
+ * as before, which is right for income: a receipt has one source, not several.
+ */
+export function aggregate(rows, key, { lines, lineKey } = {}) {
   const map = {}
+
   for (const r of rows) {
+    const own = lines?.[r.id]
+
+    if (lineKey && own?.length) {
+      // Each line under its own heading, at its own amount — so the sheet
+      // totals to the same figure either way and no part is double-counted.
+      for (const l of own) {
+        const k = l[lineKey] || '—'
+        map[k] = (map[k] || 0) + Number(l.amount || 0)
+      }
+      continue
+    }
+
     const k = r[key] || '—'
     map[k] = (map[k] || 0) + Number(r.amount)
   }
+
   return Object.entries(map)
     .sort((a, b) => b[1] - a[1])
     .map(([Name, Total]) => ({ Name, Total }))

@@ -130,6 +130,23 @@ for (const p of GUEST_PAGES) {
   }
 }
 
+// A guest has no session, so a page keyed on `session.user.id` alone never
+// loads for them — it renders empty with no error anywhere, which is exactly
+// how the budgets page looked correct in the network tab and blank on screen.
+// The two pages that always worked derive uid with a 'guest' fallback; any
+// guest-reachable page must do the same.
+let bareUid = 0
+for (const p of GUEST_PAGES) {
+  let text
+  try { text = src(p) } catch { continue }
+  const m = text.match(/const uid = [^\n]+/)
+  if (m && !/isParent/.test(m[0])) {
+    bareUid++
+    console.log(`  uid WITHOUT A GUEST FALLBACK in ${p}`)
+    console.log("         use: session?.user?.id || (isParent ? 'guest' : null)")
+  }
+}
+
 bad += inlineSize + lockLeak + unguardedPayer
 console.log(bad ? `\n  ${bad} problem(s)` : '  no stale strings')
 process.exit(bad ? 1 : 0)

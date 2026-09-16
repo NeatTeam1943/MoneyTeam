@@ -51,7 +51,11 @@ function Stat({ k, v, c }) {
 export default function Budgets() {
   const { t } = useI18n()
   const { canBudget, isMentor, canPropose, isParent, session } = useAuth()
-  const uid = session?.user?.id
+  // Same shape as the dashboard and transactions pages. A guest has no
+  // session — guest mode works without signing in — so without the fallback
+  // `uid` is null, every effect keyed on it skips, and the page never loads.
+  // That is why this page alone stayed empty while the others were fine.
+  const uid = session?.user?.id || (isParent ? 'guest' : null)
   const { activeId, active } = useSeason()
   const toast = useToast()
   const lk = useLookups()
@@ -114,7 +118,12 @@ export default function Budgets() {
     }
   }
   useEffect(() => {
-    if (session?.user?.id) load()
+    // A guest has NO session — migration 18 made guest mode work without
+    // signing in. Gating the load on session.user.id therefore meant the page
+    // never fetched anything for them: the requests in the network tab came
+    // from other pages, which is why the data looked present and the screen
+    // stayed empty.
+    if (uid) load()
     else setLoading(false)   // not signed in yet — don't sit on a spinner forever
   }, [activeId, uid])
 

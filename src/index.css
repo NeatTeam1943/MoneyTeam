@@ -659,6 +659,61 @@ html, body { max-width: 100%; overflow-x: hidden; }
   @page { margin: 12mm; }
 }
 
+/* ---------- Printed simulation ---------- */
+/* Hidden on screen; the ONLY thing on paper. The working view is not styled
+   for print — it is hidden outright, because a page of checkboxes and filter
+   chips is what printing it produced the first time. */
+.sim-print { display: none; }
+
+@media print {
+  .sim-print { display: block; }
+  .sim-print-hide { display: none !important; }
+
+  .sim-print { font-size: 11pt; color: #000; }
+
+  .sim-print-head { border-bottom: 2px solid #0522d6; padding-bottom: 8px; margin-bottom: 16px; }
+  .sim-print-team { font-size: 8pt; letter-spacing: .1em; color: #666; }
+  .sim-print h1 { font-size: 18pt; margin: 2px 0; }
+  .sim-print-meta { font-size: 9pt; color: #666; }
+
+  /* The figures as a band across the top, so the cost is the first thing the
+     eye lands on rather than a row inside a table. */
+  .sim-print-figures {
+    display: flex; gap: 20px; flex-wrap: wrap;
+    padding: 10px 0; margin-bottom: 14px; border-bottom: 1px solid #ddd;
+  }
+  .sim-print-figures > div { display: flex; flex-direction: column; }
+  .sim-print-figures span { font-size: 8pt; color: #666; }
+  .sim-print-figures b { font-size: 14pt; font-family: ui-monospace, monospace; }
+  .sim-print-total b { color: #0522d6; }
+
+  .sim-print-warn {
+    border-inline-start: 3px solid #e0384c; padding: 8px 12px; margin-bottom: 14px;
+    background: #fff5f5;
+  }
+  .sim-print-warn h2 { color: #e0384c; }
+  .sim-print-warn ul { margin: 4px 0 0; padding-inline-start: 18px; }
+
+  .sim-print h2 {
+    font-size: 11pt; margin: 14px 0 6px;
+    border-bottom: 1px solid #ddd; padding-bottom: 3px;
+  }
+  .sim-print section { break-inside: avoid; }
+
+  .sim-print table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+  .sim-print th {
+    text-align: start; font-size: 8pt; color: #666; font-weight: 600;
+    border-bottom: 1px solid #999; padding: 4px 6px;
+  }
+  .sim-print td { padding: 4px 6px; border-bottom: 1px solid #eee; }
+  .sim-print .num { text-align: end; font-family: ui-monospace, monospace; white-space: nowrap; }
+
+  .sim-print-foot {
+    margin-top: 18px; padding-top: 8px; border-top: 1px solid #ddd;
+    font-size: 8pt; color: #666;
+  }
+}
+
 .print-only { display: none; }
 
 /* Status chips on the shopping list — a filter you can see the state of at a

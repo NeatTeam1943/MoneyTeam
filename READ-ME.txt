@@ -1,77 +1,40 @@
-All six. Run 44 → 45 → 46, push the source files.
+The simulation PDF, rebuilt. No SQL.
 
-════════════════════════════════════════════════════════════════════
-SAVED SIMULATIONS — I went with your second option
-════════════════════════════════════════════════════════════════════
-You offered two: keep the ids and report the missing ones, or freeze
-everything and add "apply to current state". The second is right, and the
-reason is that the first fixes only half the problem.
+WHAT WAS WRONG
+I printed the working screen with its controls hidden. That was the wrong idea,
+not a styling miss: the screen exists to BUILD a plan — checkboxes, filter
+chips, a selection table — so printing it produced a page of tick boxes with
+truncated columns, no totals, no balances, and nothing about what the plan
+actually does.
 
-Storing ids catches items that were DELETED. It says nothing about items that
-CHANGED — a price filled in, a quantity edited. Those reopen silently at a
-different total than the one on screen when it was saved, which is the exact
-failure the id approach was meant to avoid.
+NOW
+A separate document. The working view is hidden outright when printing; the
+document is the only thing on the page.
 
-So the whole picked set is frozen: name, price, quantity, category, program,
-plus the account balances. A saved simulation always reopens showing what it
-showed.
+Ordered by what a reader asks first:
 
-"APPLY TO CURRENT STATE" is a separate button, and its value is in being
-honest about what did not survive. Four outcomes, deliberately not merged:
+  1. the cost           planned spend, expected income, projected total —
+                        as a band across the top, so the figure is the first
+                        thing the eye lands on rather than a row in a table
+  2. what it breaks     accounts going negative, budgets going over. Before the
+                        itemisation, because if a plan sends an account
+                        negative that is the thing to say first
+  3. account balances   current, change, projected
+  4. goals after it     target, what survives, what is still short
+  5. the items          last. No checkboxes, no status chips, no links — a
+                        printed page cannot be clicked, and every one of those
+                        was noise in the first attempt
 
-    unchanged   carries over silently
-    changed     carries over at TODAY's figures, and says so — the point of
-                re-applying is to see current numbers, so keeping the old ones
-                would defeat it
-    bought      has a transaction against it. Not a plan any more; counting it
-                again would double it
-    missing     deleted or cancelled
+Plus a header with the team, season and date, and a footer saying it is a
+projection and nothing was recorded — a shared PDF of figures that look like
+transactions is worth labelling.
 
-"Already bought" is kept apart from "no longer on the list" because they mean
-opposite things to the reader. Merging them into "could not apply" would make a
-completed purchase look like a loss.
+ONE BUG CAUGHT WHILE BUILDING IT
+The two warning strings take {a} and {b} as placeholders, and I had written
+{n}. It would have printed "חשבון {a} יורד למינוס" literally. Checked the
+actual strings rather than assuming, and fixed.
 
-The report also gives the total difference: "saved at ₪2,560 — today it is ₪180
-more". And when nothing changed it says so, which is the answer people are
-hoping for.
+Still window.print(): no dependency, real selectable text, works on every
+phone. Only what it prints has changed.
 
-8 assertions in scripts/audit-money.sh cover all of it, including that bought
-is not counted as missing and that the delta counts only rows that carry.
-
-════════════════════════════════════════════════════════════════════
-THE OTHER FIVE
-════════════════════════════════════════════════════════════════════
-1. GUESTS SEE BUDGETS                                    migration 44
-   budgets_guest and ledger_lines_guest, following the pattern migration 16
-   set — separate views rather than relaxed policies. A guest sees the plan,
-   the spend, what is left. Requests, reservations and the lock are SKIPPED,
-   not attempted: an RLS denial inside Promise.all aborts the whole load, and
-   the page would show nothing instead of showing less.
-
-2. ARCHIVED GOALS STOP COUNTING                          migration 44
-   Worse than it looked — Dashboard and Reports never filtered them at all, so
-   an archived goal kept subtracting its reservation in three places. Fixed at
-   the source with an `active_goals` view: a convention ("remember to filter")
-   is exactly what failed here.
-
-3. REQUESTED TOTAL ON THE DASHBOARD
-   A count answers "is there a queue"; the total answers "can we afford it".
-
-4. EXCEL EXPORTS
-   A new budgets export plus every existing sheet reformatted — 14 sheets, none
-   raw. Widths measured from content, real number formats so values stay
-   NUMERIC (a currency string sorts alphabetically — 9 after 10), autofilter
-   everywhere, and a summary sheet that opens with the overspends.
-
-   Checked rather than assumed: this build of SheetJS drops cell styling on
-   write, and writes no frozen pane whatever key you set. I unzipped the output
-   to confirm both, then removed the freeze code rather than leave a line that
-   looks like it works.
-
-6. SHARING AS PDF
-   window.print(), not html2canvas + jsPDF — saves ~250kB and produces a real
-   PDF with selectable text. The print stylesheet hides controls, forces
-   background colours (without it Chrome drops them and the overspend
-   highlighting prints white on white), and adds a team/season/date header.
-
-After deploying, index.html should reference index-CJjwCCjf.js.
+After deploying, index.html should reference index-D3s4eWxZ.js.

@@ -16,6 +16,7 @@ import { projectAccounts, projectBudgets, newlyNegative, newlyOver as newlyOverO
 import { sortRows } from '../domain/shopping'
 import { goalImpact, goalsAfterPlan } from '../domain/goals'
 import SavedSimulations from '../components/SavedSimulations'
+import SimulationPrint from '../components/SimulationPrint'
 
 import { OPEN_STATUSES } from '../domain/constants'
 
@@ -296,6 +297,25 @@ export default function Simulation() {
 
   return (
     <div>
+      {/* The printed document. Not this view with its controls hidden —
+          a separate one, because the screen is for BUILDING a plan and
+          the page is for reading its conclusion. */}
+      <SimulationPrint
+        seasonName={active?.name}
+        selected={selected}
+        extras={extras}
+        incomes={incomes}
+        plannedSpend={plannedSpend}
+        plannedIncome={plannedIncome}
+        totalAfter={totalAfter}
+        projectedAccounts={projectedAccounts}
+        goingNegative={goingNegative}
+        newlyOver={newlyOver}
+        goalOutlook={goalOutlook}
+        costOf={cost}
+      />
+
+      <div className="sim-print-hide">
       <p style={{ color: 'var(--text-faint)', fontSize: 13, marginTop: 0 }}>{t('simulationHint')}</p>
 
       {/* One line, not a panel. The previous version was a full bordered box
@@ -588,6 +608,7 @@ export default function Simulation() {
           {t('unpricedExcluded').replace('{n}', unpriced.length)}
         </p>
       )}
+      </div>
     </div>
   )
 }

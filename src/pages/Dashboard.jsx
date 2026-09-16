@@ -55,8 +55,12 @@ export default function Dashboard() {
     // What the accounts held the day this season opened. Derived, not
     // stored: the sum of every approved movement before the start date,
     // so it cannot drift when someone back-dates a transaction.
-    supabase.from('active_goals').select('reserved,team_scope')
-      .then(({ data, error }) => { if (!error) setGoals(data || []) })
+    // Members only, and it sits ABOVE the isParent guard below — so
+    // without this a guest fired a 401 here on every dashboard load.
+    if (!isParent) {
+      supabase.from('active_goals').select('reserved,team_scope')
+        .then(({ data, error }) => { if (!error) setGoals(data || []) })
+    }
     supabase.rpc('season_opening_balances', { p_season_id: activeId })
       .then(({ data, error }) => { if (!error) setOpening(data || []) })
     if (isParent) return

@@ -95,6 +95,41 @@ for (const _m of src('src/lib/export.js').matchAll(/^\s*Payer:/gm)) {
   console.log('         gate it on meta.canSeePayer — the screen hides it from non-mentors')
 }
 
+// Pages a guest can reach must not query member-only tables unbranched. A
+// guest is the `anon` role and PostgREST answers 401 — which shows up as an
+// empty page, not an error, so it is invisible without opening the network
+// tab. That is exactly how the guest budgets page stayed broken through
+// three rounds of looking in the wrong place.
+const GUEST_PAGES = ['src/pages/Dashboard.jsx', 'src/pages/Transactions.jsx',
+  'src/pages/Budgets.jsx']
+const MEMBER_ONLY = ['budgets', 'transaction_lines', 'ledger_lines_full',
+  'shopping_items', 'savings_goals', 'active_goals']
+let unbranched = 0
+for (const p of GUEST_PAGES) {
+  let text
+  try { text = src(p) } catch { continue }
+  const lines = text.split('\n')
+  // Everything after an `if (isParent) return` is already unreachable for a
+  // guest. Without tracking that, the check flags correct code — which is
+  // worse than not checking, because a noisy check gets ignored.
+  const earlyReturn = lines.findIndex((l) => /if \(isParent\)\s*return/.test(l))
+  const cutoff = earlyReturn === -1 ? Infinity : earlyReturn
+
+  for (let i = 0; i < lines.length; i++) {
+    if (i > cutoff) break
+    const line = lines[i]
+    const m = line.match(/from\('([a-z_]+)'\)/)
+    if (!m || !MEMBER_ONLY.includes(m[1])) continue
+    // Branched if isParent is on the same line (a ternary), the line is the
+    // else-half of one, or a guard opened just above it.
+    if (/isParent/.test(line) || /^\s*:/.test(line)) continue
+    if (lines.slice(Math.max(0, i - 3), i).some((l) => /if \(!isParent\)/.test(l))) continue
+    unbranched++
+    console.log(`  UNBRANCHED ${m[1]} QUERY in ${p}`)
+    console.log('         a guest is anon and gets 401 — branch it to the _guest view')
+  }
+}
+
 bad += inlineSize + lockLeak + unguardedPayer
 console.log(bad ? `\n  ${bad} problem(s)` : '  no stale strings')
 process.exit(bad ? 1 : 0)

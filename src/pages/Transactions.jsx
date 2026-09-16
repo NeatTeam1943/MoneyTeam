@@ -78,8 +78,17 @@ export default function Transactions() {
       const [tx, bal, bg, tl] = await withTimeout(Promise.all([
         supabase.from(isParent ? 'transactions_guest' : 'transactions_view').select('*').eq('season_id', activeId),
         supabase.from('account_balances').select('*'),
-        supabase.from('budgets').select('*').eq('season_id', activeId),
-        supabase.from('transaction_lines').select('transaction_id,budget_id,amount,team_scope,category_id,description,transactions!inner(season_id)').eq('transactions.season_id', activeId),
+        // Guests go through the same views the budgets page uses. This branch
+        // was missing: the transactions query was switched for a guest but
+        // these two were not, so every guest visit fired two 401s — which is
+        // what was actually breaking the budgets page, since the pages share
+        // this data.
+        isParent
+          ? supabase.from('budgets_guest').select('*').eq('season_id', activeId)
+          : supabase.from('budgets').select('*').eq('season_id', activeId),
+        isParent
+          ? supabase.from('ledger_lines_guest').select('transaction_id,budget_id,amount,team_scope,category_id,season_id').eq('season_id', activeId)
+          : supabase.from('transaction_lines').select('transaction_id,budget_id,amount,team_scope,category_id,description,transactions!inner(season_id)').eq('transactions.season_id', activeId),
       ]))
       if (!tx.error) setRows(tx.data || [])      // keep prior data if a query fails
       if (!bal.error) setBalances(bal.data || [])

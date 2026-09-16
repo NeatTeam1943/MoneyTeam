@@ -1,40 +1,38 @@
-Everything outstanding, in one zip. No SQL — 44, 45 and 46 have all been run.
+Found it. The network trace was the thing that settled it — thank you for it.
 
-THE SIMULATION PDF IS NOT HERE BECAUSE IT IS ALREADY ON MAIN
-SimulationPrint.jsx, its wiring in Simulation.jsx and the 23 print rules in
-index.css are all deployed. There is nothing left to send for it — it did not
-appear in the diff because there is no difference.
+WHAT IT SHOWED
+    transactions_guest   200   the view works
+    account_balances     200
+    budgets              401   the MEMBER table, not the view
+    transaction_lines    401   same
 
-════════════════════════════════════════════════════════════════════
-WHAT IS IN HERE
-════════════════════════════════════════════════════════════════════
-src/components/Layout.jsx
-    The guest nav list had only Dashboard and Transactions. The budgets ROUTE
-    was opened to guests last round but nothing pointed at it, so the page
-    existed with no way in. This is the only file needed to make guest budgets
-    work — migration 44 is already applied.
+So the database was never the problem. 44 and 47 both did their job. The app
+was calling the member tables directly, and PostgREST answered 401 — which
+renders as an empty page rather than an error, which is why three rounds of
+looking at views and grants found nothing.
 
-src/lib/export.js
-  · "By category" split across LINES rather than reading the transaction
-    header. A split purchase has no category of its own, so every one landed
-    under "—" — which was the whole sheet, one unnamed row holding ₪37,603.64.
-    The totals reconcile exactly either way: nothing double-counted, nothing
-    dropped.
-  · The Payer column is omitted for non-mentors instead of exported as a
-    column of '***'. The database already masked the name, so this was noise
-    rather than a leak — but a column of asterisks takes width and answers
-    nothing.
+WHERE THE CALLS CAME FROM
+Not the budgets page — the TRANSACTIONS page. It branched its `transactions`
+query for guests but left `budgets` and `transaction_lines` unbranched. Both
+pages share that data, so the failure surfaced on budgets.
 
-src/pages/Transactions.jsx
-  · Passes the split lines to the export, and canSeePayer.
-  · The "download all receipts" button is hidden from guests. The receipt
-    column was already hidden from them on screen, so the bulk download was a
-    way around exactly what that hiding was for — and a receipt carries names,
-    addresses and card digits, more than the row it belongs to.
+The dashboard had the same shape: `active_goals` sits ABOVE its
+`if (isParent) return`, so a guest fired a 401 there on every single load.
 
-scripts/
-    Two new checks, each proven by sabotage: the export must not write an
-    unguarded Payer column, and aggregate must preserve the total when it
-    splits across lines.
+I had checked the budgets page carefully and never looked at the other two.
 
-After deploying, index.html should reference index-BudnHXX4.js.
+FIXED
+  Transactions.jsx   budgets → budgets_guest, transaction_lines →
+                     ledger_lines_guest for guests
+  Dashboard.jsx      the goals query moved inside a guard
+
+A CHECK, SO THIS CANNOT RECUR SILENTLY
+check-stale-copy.mjs now fails if a guest-reachable page queries a member-only
+table without branching. It understands `if (isParent) return` as a guard, so
+it does not flag correct code — it flagged one such line on the first run and I
+taught it the difference rather than leaving a noisy check, because a check
+people learn to ignore is worse than none.
+
+Proven by collapsing the ternary back and watching it fail.
+
+After deploying, index.html should reference index-D4jztT3C.js.

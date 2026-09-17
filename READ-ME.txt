@@ -1,56 +1,34 @@
-Four things. No SQL.
+Hebrew filenames broke uploads. Two files, no SQL.
 
-════════════════════════════════════════════════════════════════════
-1. THE PANEL WAS HUGE — and the explanation was most of it
-════════════════════════════════════════════════════════════════════
-Three lines of always-visible hint text, read once and dead weight every time
-after. It is behind a "how is this calculated?" disclosure now, and the figures
-are smaller: 18px → 15px for the result, 15px → 13px for the rest, padding
-14px → 10px.
+THE CAUSE
+The storage key was built as `<season>/<uuid>-<original filename>`, and
+Supabase Storage keys only accept letters, digits and a few punctuation marks.
+Hebrew is rejected outright with "Invalid key", which is what every
+screenshot-named receipt hit — "צילום מסך 2026-09-17 213755.png" can never be
+a valid key.
 
-It reads as a summary strip rather than a section, which is what it is — every
-figure in it is already on the page.
+THE FIX
+The key is now `<season>/<uuid>.<ext>` — only the extension is kept from the
+original name.
 
-════════════════════════════════════════════════════════════════════
-2. MOVED TO WHERE IT BELONGS
-════════════════════════════════════════════════════════════════════
-    Dashboard     last on the page. At the top it pushed the stats people open
-                  the page for below the fold.
-    Simulation    above the item list, below the projections it summarises. The
-                  list is long, so anything after it is effectively hidden —
-                  and at the top it sat before the figures it depends on.
-    Reports       right after the alerts. Those say what went wrong; this says
-                  where the season is heading. Both before the charts, which
-                  are detail rather than conclusion.
+I deliberately did NOT transliterate or strip the name. Stripping Hebrew leaves
+a key like "----.png", which is worse than one that is plainly an id, and
+transliteration guesses at something nobody reads: the uuid already makes the
+key unique, and the user finds a receipt by its number and its transaction,
+never by this path.
 
-════════════════════════════════════════════════════════════════════
-3. THE RTL BUGS — and there were more than you saw
-════════════════════════════════════════════════════════════════════
-Both had one cause: I wrote literal symbols into a right-to-left text flow and
-the browser reordered them.
+A SECOND BUG THIS EXPOSED
+The receipts ZIP derived its filename with `split('.').pop()` on the WHOLE
+path. With no extension that returns the season folder, so a file would be
+named "1043.2027/". It was nearly unreachable before, because an uploaded name
+almost always carried an extension — and my change makes extension-less keys
+possible. It now reads the last path segment and falls back to ".bin".
 
-  ARROWS pointed →, which in RTL points back at the step already read. Now ←.
+NOT AFFECTED
+The receipt preview decides pdf-vs-image by reading the file's actual bytes,
+not its extension, so it behaves the same.
 
-  THE MINUS landed AFTER the digits — "157,205.96−" — because a bare sign
-  beside a formatted number gets moved by the bidi algorithm. The sign and the
-  number are now one isolated LTR run, so it reads "−157,205.96".
+ALREADY-UPLOADED RECEIPTS ARE UNTOUCHED. Their keys stay as they are and keep
+resolving; only new uploads use the new shape.
 
-I checked for the same pattern everywhere rather than only where you pointed,
-and found four more:
-
-    ReportAlerts     the overspend "+" had the identical problem
-    SavedSimulations the price-change arrow
-    Reports          the raise-log arrow
-    Transactions     the transfer arrow
-
-One I deliberately did NOT change: the export's period label. That goes into a
-filename and a provenance sheet, not into Hebrew text flow, so → is right
-there.
-
-════════════════════════════════════════════════════════════════════
-4. IN REPORTS NOW
-════════════════════════════════════════════════════════════════════
-Built from budgetRows — the same rows the alerts and the utilisation chart use
-— so the report cannot state two different figures for the same thing.
-
-After deploying, index.html should reference index-COmDYX8Q.js.
+After deploying, index.html should reference the fingerprint above.

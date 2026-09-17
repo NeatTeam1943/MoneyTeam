@@ -111,7 +111,17 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
   async function uploadReceipts() {
     if (!files.length) return f.receipt_urls
     const uploaded = await Promise.all(files.map(async (file) => {
-      const path = `${seasonId}/${crypto.randomUUID()}-${file.name}`
+      // Supabase Storage keys accept letters, digits and a handful of
+      // punctuation — Hebrew is rejected outright with "Invalid key", which is
+      // what every screenshot-named receipt hit.
+      //
+      // Only the EXTENSION is kept from the original name. The name itself is
+      // not carried into the key at all: it would have to be transliterated or
+      // stripped, and a key reading "----.png" is worse than one that is
+      // plainly an id. The uuid already makes the key unique, and the user sees
+      // the receipt by its number and its transaction, never by this path.
+      const ext = (file.name.match(/\.[A-Za-z0-9]{1,8}$/) || [''])[0].toLowerCase()
+      const path = `${seasonId}/${crypto.randomUUID()}${ext}`
       const up = await supabase.storage.from('receipts').upload(path, file)
       if (up.error) throw up.error
       return up.data.path

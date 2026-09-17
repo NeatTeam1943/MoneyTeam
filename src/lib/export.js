@@ -234,7 +234,13 @@ export async function downloadAllReceipts(rows, supabase, meta = {}, onProgress)
       const res = await fetch(data.signedUrl)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const blob = await res.blob()
-      const ext = (r.receipt_url.split('.').pop() || 'bin').split('?')[0].slice(0, 5)
+      // Taken from the LAST path segment, not the whole path: a key with no
+      // extension made `split('.')` return the season folder, producing
+      // "1043.2027/" as a filename. Rare before — the original name almost
+      // always carried an extension — and reachable now that the key is a uuid.
+      const tail = r.receipt_url.split('/').pop() || ''
+      const dot = tail.lastIndexOf('.')
+      const ext = dot > 0 ? tail.slice(dot + 1).split('?')[0].slice(0, 5) : 'bin'
       zip.file(`${r.receipt_no}.${ext}`, blob)
     } catch (e) {
       failed++

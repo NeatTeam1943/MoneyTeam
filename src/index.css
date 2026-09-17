@@ -1094,22 +1094,35 @@ table.data td.desc-cell { min-width: 12rem; }
 .outlook-row > div {
   display: flex; flex-direction: column; gap: 2px; min-width: 0;
 }
-.outlook-row span { font-size: 11px; color: var(--text-faint); }
-.outlook-row b { font-size: 15px; white-space: nowrap; }
+.outlook-row span { font-size: 10px; color: var(--text-faint); }
+.outlook-row b { font-size: 13px; white-space: nowrap; }
 .outlook-arrow {
   justify-content: center; color: var(--text-faint); font-size: 13px;
   align-self: center;
 }
-.outlook-final b { font-size: 18px; }
-.outlook-hint {
-  font-size: 12px; color: var(--text-faint);
-  margin: 10px 0 0; line-height: 1.6;
+.outlook-final b { font-size: 15px; }
+.outlook-why { margin-top: 6px; }
+.outlook-why summary {
+  font-size: 11px; color: var(--text-dim); cursor: pointer;
+  list-style: none;
+}
+.outlook-why summary::-webkit-details-marker { display: none; }
+.outlook-why summary::before { content: '▸ '; }
+.outlook-why[open] summary::before { content: '▾ '; }
+.outlook-why p {
+  font-size: 11px; color: var(--text-faint);
+  margin: 5px 0 0; line-height: 1.5;
 }
 
+/* A summary strip, not a section. It restates figures that are already on the
+   page, so it should take a band rather than a card's worth of height. */
+.year-outlook { padding: 10px 12px; }
+.year-outlook .section-title { font-size: 11px; margin-bottom: 6px; }
+
 @media (max-width: 560px) {
-  /* Stacked, with the arrows dropped — sideways arrows between vertically
+  /* Two per row and the arrows dropped — sideways arrows between vertically
      stacked figures point the wrong way and read as noise. */
-  .outlook-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+  .outlook-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
   .outlook-arrow { display: none; }
   .outlook-final { grid-column: 1 / -1; }
 }

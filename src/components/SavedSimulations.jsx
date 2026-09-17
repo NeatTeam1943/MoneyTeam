@@ -170,7 +170,7 @@ export default function SavedSimulations({ seasonId, scenario, onLoad, liveItems
                         {x.name}
                         {x.wasPrice != null && (
                           <span style={{ color: 'var(--text-faint)' }}>
-                            {' '}{money(x.wasPrice)} → {money(x.est_price)}
+                            {' '}{money(x.wasPrice)} ← {money(x.est_price)}
                           </span>
                         )}
                       </li>

@@ -39,7 +39,10 @@ export default function ReportAlerts({ alerts }) {
                     <td className="num mono">{money(o.amount)}</td>
                     <td className="num mono">{money(o.spent)}</td>
                     <td className="num mono" style={{ color: 'var(--danger)', fontWeight: 700 }}>
-                      +{money(o.by)}
+                      {/* Sign and number in one isolated run, or the bidi
+                          algorithm moves the '+' to the far side of the
+                          digits. */}
+                      <span dir="ltr">{`+${money(o.by)}`}</span>
                     </td>
                     <td className="num mono" style={{ color: 'var(--text-faint)' }}>
                       {o.pct == null ? '—' : `${Math.round(o.pct)}%`}

@@ -210,10 +210,6 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* After the stat tiles, before the charts: it summarises them, so it
-          reads as a conclusion rather than another tile. */}
-      {!isParent && <YearOutlook outlook={outlook} />}
-
       <div className="section-title">{t('accountBalances')}</div>
       <div className="stats">
         {balances.map((b) => <Stat key={b.id} k={b.name} v={money(b.balance)} c={amountColor(b.balance)} small />)}
@@ -273,6 +269,11 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* Last on the page: it restates figures shown above rather than
+          introducing new ones, so it reads as a closing summary. At the top
+          it pushed the stats people open this page for below the fold. */}
+      {!isParent && <YearOutlook outlook={outlook} />}
     </div>
   )
 }

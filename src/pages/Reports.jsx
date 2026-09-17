@@ -14,6 +14,8 @@ import { linesByTransaction, attributableAmount, touchesScope, spendByScope, exc
 import ScopeNotice from '../components/ScopeNotice'
 import ShareTable from '../components/ShareTable'
 import ReportAlerts from '../components/ReportAlerts'
+import YearOutlook from '../components/YearOutlook'
+import { yearOutlook } from '../domain/yearOutlook'
 import { reportAlerts } from '../domain/reportAlerts'
 import { goalProgress, goalsSummary } from '../domain/goals'
 import {
@@ -79,6 +81,7 @@ export default function Reports() {
   const [shopping, setShopping] = useState([])
   const [goals, setGoals] = useState([])
   const [balances, setBalances] = useState([])
+  const [opening, setOpening] = useState([])
   const [raises, setRaises] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -96,7 +99,7 @@ export default function Reports() {
     if (!activeId) { setLoading(false); return }
     if (rows.length === 0) setLoading(true)
     try {
-      const [tx, tl, bg, sh, gl, bal, rq] = await withTimeout(Promise.all([
+      const [tx, tl, bg, sh, gl, bal, rq, op] = await withTimeout(Promise.all([
         supabase.from('ledger_transactions').select('*').eq('season_id', activeId),
         supabase.from('ledger_lines_full').select('transaction_id,amount,budget_id,description,team_scope,category_id,season_id,date,tx_team_scope').eq('season_id', activeId),
         fetchCached('budgets', { seasonId: activeId }),
@@ -107,6 +110,9 @@ export default function Reports() {
         supabase.from('budget_raise_requests').select('*').eq('season_id', activeId)
           .eq('status', 'approved').order('decided_at', { ascending: false }),
         supabase.from('account_balances').select('*'),
+        // Where the season opened, so the report can show the direction of
+        // travel and not just the current position.
+        supabase.rpc('season_opening_balances', { p_season_id: activeId }),
       ]))
       if (!tx.error) setRows(tx.data || [])
       if (!tl.error) setLines(tl.data || [])
@@ -114,6 +120,7 @@ export default function Reports() {
       if (!sh.error) setShopping(sh.data || [])
       if (!gl.error) setGoals(gl.data || [])
         if (!bal.error) setBalances(bal.data || [])
+        if (!op.error) setOpening(op.data || [])
         if (!rq.error) setRaises(rq.data || [])
     } catch (e) {
       if (e.message === 'timeout') toast.error(t('loadTimedOut'))
@@ -202,6 +209,16 @@ export default function Reports() {
 
   // Computed from the same rows the utilisation chart uses, so the alert and
   // the chart can never disagree about what is over.
+  // Built from budgetRows, the same rows the alerts and the utilisation
+  // chart use, so the report cannot state two different figures for the
+  // same thing.
+  const outlook = useMemo(() => yearOutlook({
+    opening: (opening || []).reduce((s, b) => s + (Number(b.balance) || 0), 0),
+    balanceNow: balances.reduce((s, b) => s + (Number(b.balance) || 0), 0),
+    budgeted: budgetRows.reduce((s, r) => s + (Number(r.amount) || 0), 0),
+    spent: budgetRows.reduce((s, r) => s + (Number(r.spent) || 0), 0),
+  }), [opening, balances, budgetRows])
+
   const alerts = useMemo(() => reportAlerts(budgetRows), [budgetRows])
 
   const budgetChart = useMemo(
@@ -276,6 +293,11 @@ export default function Reports() {
           charts and stop — position is as much of the emphasis as colour. */}
       <ReportAlerts alerts={alerts} />
 
+      {/* Right after the alerts: those say what went wrong, this says where
+          the season is heading. Both belong before the charts, which are
+          detail rather than conclusion. */}
+      <YearOutlook outlook={outlook} />
+
       {/* Why a ceiling moved. A budget that ends the season matching its
           spending looks like good planning; this is what tells you whether
           it was planned or adjusted to fit. */}
@@ -289,7 +311,7 @@ export default function Reports() {
                   <tr key={r.id}>
                     <td className="mono">{fmtDate(r.decided_at)}</td>
                     <td className="num mono">{money(r.amount_before)}</td>
-                    <td className="num mono">→ {money(r.amount_after)}</td>
+                    <td className="num mono">← {money(r.amount_after)}</td>
                     <td style={{ overflowWrap: 'anywhere' }}>{r.reason}</td>
                   </tr>
                 ))}

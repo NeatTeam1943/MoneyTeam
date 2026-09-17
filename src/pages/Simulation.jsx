@@ -356,9 +356,6 @@ export default function Simulation() {
       </div>
 
       <div className="no-print">
-        {/* Above the scenario tools: it is the answer the simulation exists
-            to produce, so it should not sit below the controls. */}
-        <YearOutlook outlook={outlook} isSimulation />
 
         <SavedSimulations
           seasonId={activeId}
@@ -540,6 +537,11 @@ export default function Simulation() {
         ))}
         <button className="btn btn-sm" onClick={addExtra}>+ {t('addAdHoc')}</button>
       </div>
+
+      {/* Above the item list and below the projections it summarises. The
+          list is long, so anything after it is effectively hidden; at the
+          top it sat before the figures it depends on. */}
+      <YearOutlook outlook={outlook} isSimulation />
 
       <div className="section-title">{t('pickItems')}</div>
       <div className="toolbar">

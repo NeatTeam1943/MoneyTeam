@@ -417,7 +417,7 @@ export default function Transactions() {
                     </>)
                   })()}
                 </td>
-                <td>{r.type === 'transfer' ? `${r.accountName} → ${r.toAccountName}` : r.accountName || '—'}</td>
+                <td>{r.type === 'transfer' ? `${r.accountName} ← ${r.toAccountName}` : r.accountName || '—'}</td>
                 <td>{r.type === 'expense' ? (r.budgetName || '—') : (r.categoryName || r.sourceName || '—')}</td>
                 <td className="desc-cell">
                   <button type="button" className="link-cell clamp-2"

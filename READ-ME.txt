@@ -1,71 +1,56 @@
-Two features. No SQL — both use what the database already has.
+Four things. No SQL.
 
 ════════════════════════════════════════════════════════════════════
-1. FLOATING CALCULATOR, TWO MODES
+1. THE PANEL WAS HUGE — and the explanation was most of it
 ════════════════════════════════════════════════════════════════════
-A round button in the corner opens a panel; Escape or ✕ closes it. Mounted in
-Layout, so it follows you across pages and keeps whatever you were part-way
-through typing — per page it would reset on every navigation.
+Three lines of always-visible hint text, read once and dead weight every time
+after. It is behind a "how is this calculated?" disclosure now, and the figures
+are smaller: 18px → 15px for the result, 15px → 13px for the rest, padding
+14px → 10px.
 
-BASIC: the four operators, brackets, a keypad, and history.
-
-FORMULA: "students * costPerStudent". Type a name into the formula and its
-input appears — there is no separate "add a variable" step to forget. Names,
-values and the formula all persist, and Hebrew names work.
-
-Both modes run through the SAME evaluator, so precedence cannot differ between
-them and there is one place for a bug rather than two.
-
-TWO DECISIONS WORTH FLAGGING
-
-  Not eval or new Function. Both would execute whatever is typed, with access
-  to everything the page can reach — and these strings are SAVED and restored,
-  so a value from a stale localStorage entry would run on load. It is a
-  tokeniser and a shunting-yard pass instead: numbers, names, + - * / ( ) and
-  no syntax for reaching anything. `window.location` evaluates to "no value for
-  window", not to an object.
-
-  localStorage, not cookies. You asked for cookies, but they cap near 4 kB for
-  the whole domain and are attached to EVERY request the page makes — including
-  every Supabase query. A growing history would be uploaded on each one, for no
-  benefit, since nothing on the server reads it. localStorage gives ~5 MB, is
-  never transmitted, and is already how the simulation scenario persists.
-
-Tested against hostile input: unbalanced brackets, "1.2.3", "2 ** 3", division
-by zero, and a missing variable each produce a named error rather than a wrong
-number.
+It reads as a summary strip rather than a section, which is what it is — every
+figure in it is already on the page.
 
 ════════════════════════════════════════════════════════════════════
-2. START VS END OF YEAR
+2. MOVED TO WHERE IT BELONGS
 ════════════════════════════════════════════════════════════════════
-On the dashboard and in the simulation:
+    Dashboard     last on the page. At the top it pushed the stats people open
+                  the page for below the fold.
+    Simulation    above the item list, below the projections it summarises. The
+                  list is long, so anything after it is effectively hidden —
+                  and at the top it sat before the figures it depends on.
+    Reports       right after the alerts. Those say what went wrong; this says
+                  where the season is heading. Both before the charts, which
+                  are detail rather than conclusion.
 
-    opening  →  today  →  − still committed  =  projected year end
+════════════════════════════════════════════════════════════════════
+3. THE RTL BUGS — and there were more than you saw
+════════════════════════════════════════════════════════════════════
+Both had one cause: I wrote literal symbols into a right-to-left text flow and
+the browser reordered them.
 
-The projection is your formula: today's balance less everything budgeted and
-not yet spent. An approved budget nobody has touched is money already promised,
-and counting only what has LEFT the account makes a fully-budgeted season look
-healthy right until the invoices arrive.
+  ARROWS pointed →, which in RTL points back at the step already read. Now ←.
 
-It agrees with the funding-gap figure the budgets page already shows —
-₪-128,241.65 on your data — which is asserted in the audit, because two
-different numbers for the same thing would be worse than neither.
+  THE MINUS landed AFTER the digits — "157,205.96−" — because a bare sign
+  beside a formatted number gets moved by the bidi algorithm. The sign and the
+  number are now one isolated LTR run, so it reads "−157,205.96".
 
-IN THE SIMULATION it also carries the planned income and spend. That is the
-case you said mattered, and it is the only place the effect of simulated
-sponsorship on the year-end figure appears at all — every other figure on that
-page stops at today's balance.
+I checked for the same pattern everywhere rather than only where you pointed,
+and found four more:
 
-Two cases that could have quietly lied, both asserted:
-  · an OVERSPENT budget has no remaining commitment — otherwise going over
-    would credit the projection
-  · an UNDERSPENT budget stays committed — money not spent was never received,
-    so an underspend is not income
+    ReportAlerts     the overspend "+" had the identical problem
+    SavedSimulations the price-change arrow
+    Reports          the raise-log arrow
+    Transactions     the transfer arrow
 
-The year-end figure is on the shared PDF too. "What is left today" and "where
-the season lands" are different answers, and the second is the one a reader
-acts on.
+One I deliberately did NOT change: the export's period label. That goes into a
+filename and a provenance sheet, not into Hebrew text flow, so → is right
+there.
 
-7 assertions in scripts/audit-money.sh.
+════════════════════════════════════════════════════════════════════
+4. IN REPORTS NOW
+════════════════════════════════════════════════════════════════════
+Built from budgetRows — the same rows the alerts and the utilisation chart use
+— so the report cannot state two different figures for the same thing.
 
-After deploying, index.html should reference index-BnohdeiC.js.
+After deploying, index.html should reference index-COmDYX8Q.js.

@@ -11,6 +11,8 @@ import { useAuth } from '../context/AuthContext'
 import { useI18n } from '../lib/i18n'
 import { useLookups } from '../lib/useLookups'
 import { spendableAfterGoals } from '../domain/goals'
+import { yearOutlook } from '../domain/yearOutlook'
+import YearOutlook from '../components/YearOutlook'
 import { money, monthKey, typeColor, amountColor, lineTotal } from '../lib/format'
 import { useTeamScope } from '../context/TeamScopeContext'
 import { linesByTransaction, attributableAmount, touchesScope, exclusiveVsShared } from '../lib/teamScope'
@@ -129,6 +131,17 @@ export default function Dashboard() {
     () => (opening ? opening.reduce((s, b) => s + (Number(b.balance) || 0), 0) : null),
     [opening])
 
+  // Where the season is heading, from the figures already on this page.
+  // Budgets are filtered to the visible programs so the projection matches the
+  // FRC/FTC toggle rather than silently spanning both.
+  const outlook = useMemo(() => yearOutlook({
+    opening: openingTotal || 0,
+    balanceNow: cashOnHand,
+    budgeted: budgets.filter((b) => ts.matches(b.team_scope))
+      .reduce((s, b) => s + (Number(b.amount) || 0), 0),
+    spent: totals.expense,
+  }), [openingTotal, cashOnHand, budgets, ts, totals])
+
   // Reserved money is a third quantity — not a budget, not a request — so it
   // is shown by subtracting it from what can be spent rather than folded into
   // either total.
@@ -196,6 +209,10 @@ export default function Dashboard() {
           <Stat k={t('requestedTotal')} v={money(requestedTotal)} c="var(--out)" />
         )}
       </div>
+
+      {/* After the stat tiles, before the charts: it summarises them, so it
+          reads as a conclusion rather than another tile. */}
+      {!isParent && <YearOutlook outlook={outlook} />}
 
       <div className="section-title">{t('accountBalances')}</div>
       <div className="stats">

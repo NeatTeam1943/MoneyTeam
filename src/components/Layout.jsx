@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom'
+import Calculator from './Calculator'
 import { useAuth } from '../context/AuthContext'
 import { useSeason } from '../context/SeasonContext'
 import { useI18n } from '../lib/i18n'
@@ -106,6 +107,10 @@ export default function Layout({ children }) {
         </header>
         <main className="content">{children}</main>
       </div>
+      {/* Mounted once here rather than per page: at the layout level it follows
+          the user across navigation and keeps whatever they were part-way
+          through typing. Per page it would reset on every tab change. */}
+      <Calculator />
     </div>
   )
 }

@@ -17,6 +17,8 @@ import { sortRows } from '../domain/shopping'
 import { goalImpact, goalsAfterPlan } from '../domain/goals'
 import SavedSimulations from '../components/SavedSimulations'
 import SimulationPrint from '../components/SimulationPrint'
+import YearOutlook from '../components/YearOutlook'
+import { yearOutlook } from '../domain/yearOutlook'
 
 import { OPEN_STATUSES } from '../domain/constants'
 
@@ -39,6 +41,7 @@ export default function Simulation() {
 
   const [items, setItems] = useState([])
   const [budgets, setBudgets] = useState([])
+  const [opening, setOpening] = useState([])
   const [lines, setLines] = useState([])
   const [balances, setBalances] = useState([])
   const [goals, setGoals] = useState([])
@@ -131,18 +134,22 @@ export default function Simulation() {
   async function load() {
     if (!activeId) { setLoading(false); return }
     try {
-      const [it, bg, tl, bal, gl] = await withTimeout(Promise.all([
+      const [it, bg, tl, bal, gl, op] = await withTimeout(Promise.all([
         fetchCached('shopping_items', { seasonId: activeId }),
         fetchCached('budgets', { seasonId: activeId }),
         supabase.from('ledger_lines_full').select('amount,budget_id,team_scope,category_id,season_id,tx_team_scope').eq('season_id', activeId),
         supabase.from('account_balances').select('*'),
         supabase.from('active_goals').select('id,name,target,reserved,team_scope,archived_at,target_date'),
+        // Where the season started, so the projection is comparable against
+        // it rather than floating on its own.
+        supabase.rpc('season_opening_balances', { p_season_id: activeId }),
       ]))
       if (!it.error) setItems(it.data || [])
       if (!bg.error) setBudgets(bg.data || [])
       if (!tl.error) setLines(tl.data || [])
       if (!gl.error) setGoals(gl.data || [])
       if (!bal.error) setBalances(bal.data || [])
+      if (!op.error) setOpening(op.data || [])
     } catch (e) {
       if (e.message === 'timeout') toast.error(t('loadTimedOut'))
     } finally { setLoading(false) }
@@ -251,6 +258,21 @@ export default function Simulation() {
   }), [balances, incomes, selected, scopedExtras, fundBy, fundFrom])   // eslint-disable-line react-hooks/exhaustive-deps
 
   const totalAfter = projectedAccounts.reduce((s, a) => s + a.after, 0)
+
+  // The year-end picture WITH the plan applied. This is the case that
+  // justified building it: a simulation that adds expected sponsorship
+  // changes where the season lands, and nothing else here showed that —
+  // the other figures all stop at today's balance.
+  const outlook = useMemo(() => yearOutlook({
+    opening: (opening || []).reduce((s, b) => s + (Number(b.balance) || 0), 0),
+    balanceNow: balances.reduce((s, b) => s + (Number(b.balance) || 0), 0),
+    budgeted: budgets.filter((b) => ts.matches(b.team_scope))
+      .reduce((s, b) => s + (Number(b.amount) || 0), 0),
+    spent: lines.filter((l) => ts.matches(l.team_scope))
+      .reduce((s, l) => s + (Number(l.amount) || 0), 0),
+    plannedIncome,
+    plannedSpend,
+  }), [opening, balances, budgets, lines, ts, plannedIncome, plannedSpend])
   const goingNegative = newlyNegative(projectedAccounts)
 
   // ---- projected budget burn ----------------------------------------------
@@ -308,6 +330,7 @@ export default function Simulation() {
         plannedSpend={plannedSpend}
         plannedIncome={plannedIncome}
         totalAfter={totalAfter}
+        outlook={outlook}
         projectedAccounts={projectedAccounts}
         goingNegative={goingNegative}
         newlyOver={newlyOver}
@@ -333,6 +356,10 @@ export default function Simulation() {
       </div>
 
       <div className="no-print">
+        {/* Above the scenario tools: it is the answer the simulation exists
+            to produce, so it should not sit below the controls. */}
+        <YearOutlook outlook={outlook} isSimulation />
+
         <SavedSimulations
           seasonId={activeId}
           scenario={scenario}

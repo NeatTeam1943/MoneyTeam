@@ -16,7 +16,7 @@ import { money } from '../lib/format'
  */
 export default function SimulationPrint({
   seasonName, selected, extras, incomes,
-  plannedSpend, plannedIncome, totalAfter,
+  plannedSpend, plannedIncome, totalAfter, outlook,
   projectedAccounts, goingNegative, newlyOver, goalOutlook, costOf,
 }) {
   const { t } = useI18n()
@@ -48,6 +48,15 @@ export default function SimulationPrint({
           <span>{t('projectedTotal')}</span>
           <b>{money(totalAfter)}</b>
         </div>
+        {/* The year-end figure belongs on the shared page too: "what is left
+            today" and "where the season lands" are different answers, and the
+            second is the one a reader takes a decision on. */}
+        {outlook && (
+          <div className="sim-print-total">
+            <span>{t('projectedYearEnd')}</span>
+            <b>{money(outlook.projected)}</b>
+          </div>
+        )}
       </section>
 
       {/* Warnings second. If a plan sends an account negative, that is the

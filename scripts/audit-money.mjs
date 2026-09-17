@@ -18,6 +18,7 @@ import { projectBudgets, newlyOver } from '/tmp/A_simulation.mjs'
 import { spendableAfterGoals, goalImpact, budgetFundingGap } from '/tmp/A_goals.mjs'
 import { reapply, snapshotTotal } from '/tmp/A_simSnapshot.mjs'
 import { aggregate } from '/tmp/A_aggregate.mjs'
+import { yearOutlook } from '/tmp/A_yearOutlook.mjs'
 
 const f = (n) => Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 let fails = 0
@@ -208,7 +209,32 @@ for (const [lbl, picked, wantEx, wantSh] of [
   {
   {
   {
-  console.log('\n=== export totals split across lines, not lost to "—" ===')
+  {
+  console.log('\n=== the year-end projection ===')
+  const base = { opening: 0, balanceNow: 28964.31, budgeted: 194809.60, spent: 37603.64 }
+  const r = yearOutlook(base)
+  // Must agree with the funding-gap figure the budgets page already shows,
+  // or the app states two different numbers for the same thing.
+  check('committed is budget minus spent', r.committed, 157205.96)
+  check('projection subtracts what is still committed', r.projected, -128241.65)
+  check('a negative projection reports a shortfall', r.shortfall, 128241.65)
+
+  // Simulated income has to move it, or the feature is pointless in the one
+  // place it was asked for.
+  const s = yearOutlook({ ...base, plannedIncome: 150000, plannedSpend: 12000 })
+  check('planned income lifts the projection', s.projected, 9758.35)
+
+  // An overspent budget must not credit the projection for going over.
+  const over = yearOutlook({ balanceNow: 1000, budgeted: 500, spent: 900 })
+  check('overspend leaves no remaining commitment', over.committed, 0)
+  check('and does not inflate the projection', over.projected, 1000)
+
+  // Money not spent was never received: under-spend is not income.
+  const under = yearOutlook({ balanceNow: 1000, budgeted: 500, spent: 0 })
+  check('an untouched budget stays committed', under.projected, 500)
+}
+
+console.log('\n=== export totals split across lines, not lost to "—" ===')
   // A split purchase carries no category on the header, so aggregating on the
   // header alone put every split under "—" — which was the whole sheet.
   const rows = [

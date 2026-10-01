@@ -147,6 +147,39 @@ for (const p of GUEST_PAGES) {
   }
 }
 
-bad += inlineSize + lockLeak + unguardedPayer
+
+// Shopping statuses live in ONE list. Three files had grown their own copy of
+// ['pending_approval', 'approved', ...] — the form's dropdown, the page's
+// filter, and the budget roll-up — so adding a status to the enum left it
+// absent from two dropdowns and uncounted in the funding gap, with nothing
+// failing. Adding a status is rare enough that the next person will not
+// remember where the copies are, so the copies are not allowed.
+//
+// Only the four values NOTHING ELSE uses are matched. 'approved', 'pending',
+// 'received' and 'cancelled' are also budget-raise and transaction-approval
+// states, and matching those flagged six correct lines on the first run — a
+// check that fires on correct code gets ignored, which is worse than no check.
+// Any copy of the full list necessarily contains 'pending_approval' and
+// 'ordered', so the narrow rule still catches the thing worth catching.
+const STATUS_LITERALS = /'(wish|pending_approval|waiting_sponsor|ordered)'/
+let statusCopy = 0
+const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+  e.isDirectory() ? walk(`${dir}/${e.name}`)
+    : /\.jsx?$/.test(e.name) ? [`${dir}/${e.name}`] : [])
+for (const f of walk('src')) {
+  if (f === 'src/domain/constants.js' || f === 'src/lib/i18n.jsx') continue
+  const lines = src(f).split('\n')
+  for (let i = 0; i < lines.length; i++) {
+    // A status named in a comment is prose, not a second source of truth —
+    // and one of them explains why the literal is absent from the code below.
+    const code = lines[i].replace(/\/\/.*$/, '').replace(/\/\*.*?\*\//g, '')
+    if (!STATUS_LITERALS.test(code)) continue
+    statusCopy++
+    console.log(`  HARD-CODED SHOPPING STATUS in ${f}:${i + 1}`)
+    console.log('         use SHOPPING_STATUS / SELECTABLE_STATUSES / BUYABLE_STATUSES / OPEN_STATUSES')
+  }
+}
+
+bad += inlineSize + lockLeak + unguardedPayer + unbranched + bareUid + statusCopy
 console.log(bad ? `\n  ${bad} problem(s)` : '  no stale strings')
 process.exit(bad ? 1 : 0)

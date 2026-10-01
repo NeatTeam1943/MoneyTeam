@@ -1,4 +1,4 @@
-import { SCOPE, SHOPPING_STATUS, GROUPING } from './constants'
+import { SCOPE, OPEN_STATUSES, GROUPING } from './constants'
 import { toNumber, lineTotalOf, roundMoney } from './money'
 import { buildOwnership, ownedBudgetIds, directBudgetIds } from './budgetOwnership'
 import { resolveBudget } from './budgetResolver'
@@ -8,8 +8,6 @@ import { resolveBudget } from './budgetResolver'
 // Kept as pure functions with no React and no Supabase so the arithmetic can
 // be exercised directly against real data. The component decides what to
 // render; this decides what the numbers are.
-
-const OPEN_REQUEST_STATUSES = [SHOPPING_STATUS.PENDING, SHOPPING_STATUS.APPROVED]
 
 /** Which categories a budget's figures may draw from.
  *  Overall (no category) under 'direct' means "charged to nothing specific",
@@ -53,7 +51,7 @@ export function spentInScopeOn(budget, expenses, inScope, budgetCategory, matche
  *  only one pot per category. */
 export function requestedOn(shopping, inScope, matchesPot) {
   return shopping.reduce((s, r) => {
-    if (!OPEN_REQUEST_STATUSES.includes(r.status)) return s
+    if (!OPEN_STATUSES.includes(r.status)) return s
     if (!inScope(r.category_id)) return s
     if (matchesPot && !matchesPot(r)) return s
     return s + lineTotalOf(r)

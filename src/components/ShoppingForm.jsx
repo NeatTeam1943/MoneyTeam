@@ -8,8 +8,7 @@ import { useAuth } from '../context/AuthContext'
 import Modal from './Modal'
 import { catLabel } from '../context/LookupsContext'
 import { TeamScopePicker } from './TeamScope'
-
-const STATUSES = ['pending_approval', 'approved', 'ordered', 'received', 'cancelled']
+import { SELECTABLE_STATUSES, SHOPPING_STATUS } from '../domain/constants'
 
 export default function ShoppingForm({ editing, seasonId, categoryTree, vendorsActive, levels, templates = [], onClose, onSaved }) {
   const { t } = useI18n()
@@ -27,7 +26,7 @@ export default function ShoppingForm({ editing, seasonId, categoryTree, vendorsA
     est_price: editing?.est_price || '',
     quantity: editing?.quantity ?? 1,
     priority_level_id: editing?.priority_level_id || '',
-    status: editing?.status || 'pending_approval',
+    status: editing?.status || SHOPPING_STATUS.PENDING,
     notes: editing?.notes || '',
     template_id: editing?.template_id || '',
     team_scope: editing?.team_scope || 'both',
@@ -87,7 +86,7 @@ export default function ShoppingForm({ editing, seasonId, categoryTree, vendorsA
       description: template ? composed : (f.notes || null),
     }
     if (isMentor) payload.status = f.status
-    else if (!editing) payload.status = 'pending_approval'
+    else if (!editing) payload.status = SHOPPING_STATUS.PENDING
 
     const res = editing
       ? await mutate('shopping_items', (q) => q.update(payload).eq('id', editing.id))
@@ -234,7 +233,7 @@ export default function ShoppingForm({ editing, seasonId, categoryTree, vendorsA
           <div className="field">
             <label>{t('status')}</label>
             <select value={f.status} onChange={set('status')}>
-              {STATUSES.map((s) => <option key={s} value={s}>{t(s)}</option>)}
+              {SELECTABLE_STATUSES.map((s) => <option key={s} value={s}>{t(s)}</option>)}
             </select>
           </div>
         )}

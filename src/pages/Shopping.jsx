@@ -19,9 +19,8 @@ import MultiSelect from '../components/MultiSelect'
 import DetailPanel from '../components/DetailPanel'
 import { filterRows, sortRows } from '../domain/shopping'
 import { splitByExclusivity } from '../lib/teamScope'
-import { BUYABLE_STATUSES, DEFAULT_SHOPPING_STATUSES, OPEN_STATUSES } from '../domain/constants'
+import { BUYABLE_STATUSES, DEFAULT_SHOPPING_STATUSES, OPEN_STATUSES, SELECTABLE_STATUSES, SHOPPING_STATUS } from '../domain/constants'
 
-const STATUSES = ['pending_approval', 'approved', 'ordered', 'received', 'cancelled']
 // Axis labels and grid lines follow the theme too: #4c5570 on a dark panel is
 // 2.3:1 and #dde2ee grid lines glow. SVG resolves CSS variables the same way
 // the rest of the app does.
@@ -170,7 +169,10 @@ export default function Shopping() {
     [enriched, fStatuses, fPriority, fCategory, fScopes, fHasPrice, q, rankOf, sort, t, lk])
 
   // "requested" = still wanted (not received / cancelled)
-  const open = useMemo(() => enriched.filter((r) => BUYABLE_STATUSES.includes(r.status)), [enriched])
+  // OPEN, not BUYABLE: this feeds the "still outstanding by category" chart,
+  // which sits under the outstanding total — and two figures that disagree on
+  // the same screen are worse than either being wrong on its own.
+  const open = useMemo(() => enriched.filter((r) => OPEN_STATUSES.includes(r.status)), [enriched])
 
   // Same direct/parent toggle as the Dashboard's "by category" chart —
   // 'direct' never rolls a child (e.g. אוכל) into its parent (תחרויות);
@@ -199,7 +201,7 @@ export default function Shopping() {
     return Object.entries(m).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
   }, [enriched, categoryGrouping, topAncestorName])
 
-  // STILL OUTSTANDING: only items not yet paid for — pending_approval / approved
+  // STILL OUTSTANDING: only items not yet paid for — see BUYABLE_STATUSES
   const byCategoryOpen = useMemo(() => {
     const m = {}
     for (const r of open) { const k = groupKey(r.category_id, r.categoryName); m[k] = (m[k] || 0) + lineTotal(r) }
@@ -455,7 +457,7 @@ export default function Shopping() {
             tells you whether a status is worth ticking before you tick it. */}
         <MultiSelect
           label={t('status')}
-          options={STATUSES.map((st) => ({
+          options={SELECTABLE_STATUSES.map((st) => ({
             value: st,
             label: t(st),
             count: enriched.filter((r) => r.status === st).length,
@@ -521,7 +523,7 @@ export default function Shopping() {
         {canChangeStatus && selectedItems.length > 0 && (
           <select value="" onChange={(e) => { if (e.target.value) bulkStatus(e.target.value) }}>
             <option value="">{t('bulkSetStatus')} ({selectedItems.length})</option>
-            {STATUSES.map((st) => <option key={st} value={st}>{t(st)}</option>)}
+            {SELECTABLE_STATUSES.map((st) => <option key={st} value={st}>{t(st)}</option>)}
           </select>
         )}
         {canTransact && buyableItems.length > 0 && <button className="btn btn-primary" onClick={() => setBuyOpen(true)}>{t('buySelected')} ({buyableItems.length})</button>}
@@ -548,8 +550,8 @@ export default function Shopping() {
             <tbody>
               {filtered.map((r) => {
                 const lvl = lk.levels.find((l) => l.id === r.priority_level_id)
-                const done = r.status === 'received' || r.status === 'cancelled'
-                const canBuy = canTransact && (r.status === 'pending_approval' || r.status === 'approved')
+                const done = r.status === SHOPPING_STATUS.RECEIVED || r.status === SHOPPING_STATUS.CANCELLED
+                const canBuy = canTransact && BUYABLE_STATUSES.includes(r.status)
                 return (
                   <tr key={r.id} style={done ? { opacity: 0.5, background: 'var(--panel-2)' } : undefined}>
                     {canSelect && <td><input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleSel(r.id)} style={{ width: 'auto' }} title={canBuy ? '' : t('notBuyable')} /></td>}
@@ -567,7 +569,7 @@ export default function Shopping() {
                     <td>
                       {canChangeStatus ? (
                         <select value={r.status} onChange={(e) => changeStatus(r.id, e.target.value)} style={{ width: 'auto', padding: '4px 8px', fontSize: 13 }}>
-                          {STATUSES.map((s) => <option key={s} value={s}>{t(s)}</option>)}
+                          {SELECTABLE_STATUSES.map((s) => <option key={s} value={s}>{t(s)}</option>)}
                         </select>
                       ) : <span className="badge">{t(r.status)}</span>}
                     </td>

@@ -42,17 +42,36 @@ export const TX = Object.freeze({
 export const SHOPPING_STATUS = Object.freeze({
   WISH: 'wish',
   PENDING: 'pending_approval',
+  WAITING_SPONSOR: 'waiting_sponsor',
   APPROVED: 'approved',
   ORDERED: 'ordered',
   RECEIVED: 'received',
   CANCELLED: 'cancelled',
 })
 
-/** Statuses a wish-list row can still be turned into a purchase from. */
+/** The statuses offered in the dropdowns, in the order a request moves through
+ *  them. `wish` is left out, as it was before this list was named: it is the
+ *  column's default from before approvals existed, nothing creates one now,
+ *  and offering it would only let a dead state back in. Rows that still carry
+ *  it are shown and filtered normally. */
+export const SELECTABLE_STATUSES = Object.freeze(
+  Object.values(SHOPPING_STATUS).filter((s) => s !== SHOPPING_STATUS.WISH))
+
+/** Statuses a wish-list row can still be turned into a purchase from.
+ *
+ *  `waiting_sponsor` is deliberately NOT here. Buying an item the team is
+ *  waiting on a sponsor for is a decision to stop waiting, and it should be
+ *  made one row at a time — not by a sponsor-pending row being swept into a
+ *  "buy selected" basket alongside four approved ones. Moving it to
+ *  "approved" first says out loud that the team is paying after all. */
 export const BUYABLE_STATUSES = Object.freeze([SHOPPING_STATUS.PENDING, SHOPPING_STATUS.APPROVED])
 
-/** Statuses that still count as "waiting to be bought". */
-export const OPEN_STATUSES = BUYABLE_STATUSES
+/** Statuses that still count as "waiting to be bought", and so as money the
+ *  team has not yet found. Wider than BUYABLE: a sponsor may still decline,
+ *  and a funding gap that quietly shrinks because an item was parked under
+ *  "waiting for sponsor" is wrong in the dangerous direction. */
+export const OPEN_STATUSES = Object.freeze(
+  [...BUYABLE_STATUSES, SHOPPING_STATUS.WAITING_SPONSOR])
 
 /** What the shopping list shows before anyone touches the filter.
  *  Everything except the two that are finished with: a received item has

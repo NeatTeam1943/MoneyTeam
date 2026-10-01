@@ -7,8 +7,10 @@ import { lineTotalOf } from './money'
  *  remember about an item. */
 // Everything a person might type. The status and program were missing, so
 // searching "אושר" or "FTC" found nothing even though both are on screen.
+// `ownerName` is here because "who asked for this" is a question people
+// actually have about a list, and typing a name is the obvious way to ask it.
 const SEARCHABLE = ['name', 'sku', 'vendor', 'categoryName', 'priorityName',
-  'notes', 'description', 'statusLabel', 'team_scope']
+  'notes', 'description', 'statusLabel', 'team_scope', 'ownerName']
 
 export function matchesSearch(row, needle) {
   if (!needle) return true

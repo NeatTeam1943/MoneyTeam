@@ -19,6 +19,7 @@ import { spendableAfterGoals, goalImpact, budgetFundingGap } from '/tmp/A_goals.
 import { reapply, snapshotTotal } from '/tmp/A_simSnapshot.mjs'
 import { aggregate } from '/tmp/A_aggregate.mjs'
 import { yearOutlook } from '/tmp/A_yearOutlook.mjs'
+import { resolveBudget } from '/tmp/A_budgetResolver.mjs'
 
 const f = (n) => Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 let fails = 0
@@ -210,7 +211,38 @@ for (const [lbl, picked, wantEx, wantSh] of [
   {
   {
   {
-  console.log('\n=== the year-end projection ===')
+  {
+  console.log('\n=== buy-selected carries the row\'s own category and program ===')
+  // The shopping row already records both. Leaving them off the purchase line
+  // made the buyer re-pick per line, from memory, what the list had recorded —
+  // and re-picking is how a line lands on the wrong program.
+  const items = [
+    { id: 'i1', name: 'Kraken', category_id: 'c-robot', team_scope: 'ftc', est_price: 1150, quantity: 4 },
+    { id: 'i2', name: 'Ties', category_id: 'c-raw', team_scope: 'both', est_price: 29, quantity: 2 },
+  ]
+  const budgets = [
+    { id: 'b-frc', category_id: 'c-robot', team_scope: 'frc' },
+    { id: 'b-ftc', category_id: 'c-robot', team_scope: 'ftc' },
+  ]
+  const parentOf = { 'c-robot': null, 'c-raw': null }
+
+  const lines = items.map((it) => ({
+    budget_id: resolveBudget(it.category_id, it.team_scope || 'both', budgets, parentOf).budget?.id || '',
+    category_id: it.category_id || '',
+    team_scope: it.team_scope || 'both',
+  }))
+
+  check('category carries over', lines.filter((l) => l.category_id).length, 2)
+  check('program carries over', lines.filter((l) => l.team_scope).length, 2)
+  // The one that matters: resolving on category ALONE picked the FRC pot for an
+  // FTC row, because it matched whichever budget came first in the array.
+  check('an FTC row resolves to the FTC pot', lines[0].budget_id === 'b-ftc' ? 1 : 0, 1)
+
+  const naive = (cid) => (budgets.find((b) => b.category_id === cid) || {}).id || ''
+  check('the old resolver really did get it wrong', naive('c-robot') === 'b-frc' ? 1 : 0, 1)
+}
+
+console.log('\n=== the year-end projection ===')
   const base = { opening: 0, balanceNow: 28964.31, budgeted: 194809.60, spent: 37603.64 }
   const r = yearOutlook(base)
   // Must agree with the funding-gap figure the budgets page already shows,

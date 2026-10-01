@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { resolveBudget } from '../domain/budgetResolver'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts'
 import { supabase, withTimeout } from '../lib/supabase'
 import { useRefreshOnReturn } from '../lib/useRefreshOnReturn'
@@ -46,7 +47,7 @@ function Stat({ k, v, c }) {
 
 export default function Shopping() {
   const { t } = useI18n()
-  const { canAddShopping, canChangeStatus, canTransact, session } = useAuth()
+  const { canAddShopping, canChangeStatus, canTransact, isMentor, session } = useAuth()
   // Anyone who can act on a selection gets tick boxes — buying is not the only
   // reason to select rows any more.
   const canSelect = canTransact || canChangeStatus
@@ -57,6 +58,7 @@ export default function Shopping() {
   const ts = useTeamScope()
   const [rows, setRows] = useState([])
   const [budgets, setBudgets] = useState([])
+  const [members, setMembers] = useState([])
   const [lines, setLines] = useState([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
@@ -79,14 +81,18 @@ export default function Shopping() {
     if (!activeId) { setLoading(false); return }
     if (rows.length === 0) setLoading(true)   // only spinner when nothing is showing yet
     try {
-      const [items, bg, tl] = await withTimeout(Promise.all([
+      const [items, bg, tl, mb] = await withTimeout(Promise.all([
         supabase.from('shopping_items').select('*').eq('season_id', activeId),
         supabase.from('budgets').select('*').eq('season_id', activeId),
         supabase.from('ledger_lines_full').select('amount,budget_id,team_scope,category_id,season_id,tx_team_scope').eq('season_id', activeId),
+        // Who raised each request. Any member may read this table, and the
+        // id on a shopping row IS the auth uid, so the join is a lookup.
+        supabase.from('members').select('id,full_name,email'),
       ]))
       if (!items.error) setRows(items.data || [])
       if (!bg.error) setBudgets(bg.data || [])
       if (!tl.error) setLines(tl.data || [])
+      if (!mb.error) setMembers(mb.data || [])
     } catch (e) {
       if (e.message === 'timeout') toast.error(t('loadTimedOut'))
     } finally {
@@ -106,6 +112,10 @@ export default function Shopping() {
   // The FRC/FTC checklist is applied here, once — every chart, the table and
   // the export all read from `enriched`, so none of them can drift out of sync
   // with what the top bar says is being shown.
+  const memberName = useMemo(
+    () => Object.fromEntries(members.map((m) => [m.id, m.full_name || m.email || ''])),
+    [members])
+
   const enriched = useMemo(() => rows.filter((r) => ts.matches(r.team_scope)).map((r) => ({
     ...r,
     categoryName: lk.categoryName[r.category_id] || '',
@@ -113,7 +123,10 @@ export default function Shopping() {
     // So free-text search can match "אושר" or "ממתין", which are on screen
     // but were not in any searchable field.
     statusLabel: t(r.status),
-  })), [rows, lk.categoryName, lk.levelName, ts, t])
+    // Who to ask about this row. Searchable too, so "who asked for this"
+    // is answered from the same box as everything else.
+    ownerName: memberName[r.created_by] || '',
+  })), [rows, lk.categoryName, lk.levelName, ts, t, memberName])
 
   // Expense lines carry their scope on the parent transaction.
   const scopedLines = useMemo(() => lines.filter((l) => ts.matches(l.tx_team_scope)), [lines, ts])
@@ -216,8 +229,47 @@ export default function Shopping() {
 
   async function del(id) {
     if (!confirm(t('confirmDelete'))) return
-    await supabase.from('shopping_items').delete().eq('id', id)
+    const { error } = await supabase.from('shopping_items').delete().eq('id', id)
+    // The row-level policy is the real guard, so a refusal has to be shown
+    // rather than swallowed — before this, a blocked delete looked like a
+    // successful one until the list reloaded unchanged.
+    if (error) { toast.error(error.message); return }
     toast.success(t('deleted')); load()
+  }
+
+  /**
+   * Raise the same request again.
+   *
+   * Copies what describes the ITEM — name, link, part number, supplier, price,
+   * quantity, category, program, priority — and deliberately not what describes
+   * the last time it was bought: no status, no transaction, no notes. It comes
+   * back as a fresh pending request, which is what "we need this again" means.
+   *
+   * created_by is left to its default, so the duplicate belongs to whoever
+   * pressed the button, not to whoever raised the original. They are the person
+   * to ask about it now.
+   */
+  async function duplicate(r) {
+    const { error } = await supabase.from('shopping_items').insert({
+      season_id: activeId,
+      name: r.name,
+      description: r.description,
+      url: r.url,
+      urls: r.urls || [],
+      sku: r.sku,
+      vendor: r.vendor,
+      est_price: r.est_price,
+      quantity: r.quantity,
+      category_id: r.category_id,
+      team_scope: r.team_scope,
+      priority_level_id: r.priority_level_id,
+      // `status` is omitted on purpose rather than set to a literal: the
+      // column's own default is 'pending_approval', so a duplicate follows
+      // whatever that default becomes instead of pinning a value here that
+      // would silently drift out of step with it.
+    })
+    if (error) { toast.error(error.message); return }
+    toast.success(t('duplicated')); load()
   }
 
   async function changeStatus(id, status) {
@@ -248,7 +300,14 @@ export default function Shopping() {
     load()
   }
 
-  const budgetFor = (categoryId) => (budgets.find((b) => b.category_id === categoryId) || {}).id || ''
+  // The same resolver the transaction form uses, with the row's PROGRAM taken
+  // into account. The old version matched on category alone, so a category with
+  // separate FRC and FTC pots got whichever happened to come first in the
+  // array — arbitrary, and wrong half the time. It also never walked up to a
+  // parent budget, so a child category with no pot of its own resolved to
+  // nothing at all.
+  const budgetFor = (categoryId, scope = 'both') =>
+    resolveBudget(categoryId, scope, budgets, lk.parentOf).budget?.id || ''
   const toggleSel = (id) => setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
   function buyOne(item) { setSelected(new Set([item.id])); setBuyOpen(true) }
 
@@ -285,10 +344,16 @@ export default function Shopping() {
       vendor: vendors.length === 1 ? vendors[0] : '',
       team_scope: scopes.length === 1 ? scopes[0] : 'both',
       lines: buyableItems.map((it) => ({
-        budget_id: budgetFor(it.category_id),
+        budget_id: budgetFor(it.category_id, it.team_scope || 'both'),
         amount: it.est_price ? lineTotal(it) : '',
         shopping_item_id: it.id,
         description: it.name,
+        // The row already says which category and which program it belongs to.
+        // Leaving these blank made the buyer re-pick, per line, what the list
+        // had recorded when the request was raised — and re-picking from memory
+        // is how a line ends up charged to the wrong program.
+        category_id: it.category_id || '',
+        team_scope: it.team_scope || 'both',
       })),
     }
   }, [buyableItems, budgets])
@@ -477,7 +542,7 @@ export default function Shopping() {
                   title={t('selectAllFiltered')} /></th>}
                 {th('priority', t('priority'))}{th('name', t('name'))}<th>{t('teamScope')}</th><th>{t('sku')}</th>{th('category', t('category'))}
                 {th('vendor', t('vendor'))}{th('est_price', t('estPrice'))}{th('quantity', t('quantity'))}{th('status', t('status'))}
-                <th>{t('url')}</th>{(canAddShopping || canTransact) && <th>{t('actions')}</th>}
+                <th>{t('url')}</th>{th('ownerName', t('requestedBy'))}{(canAddShopping || canTransact) && <th>{t('actions')}</th>}
               </tr>
             </thead>
             <tbody>
@@ -521,11 +586,28 @@ export default function Shopping() {
                         )
                       })()}
                     </td>
+                    <td style={{ color: 'var(--text-dim)', fontSize: 12, whiteSpace: 'nowrap' }}>
+                      {r.ownerName || '—'}
+                    </td>
                     {(canAddShopping || canTransact) && (
                       <td style={{ whiteSpace: 'nowrap' }}>
                         {canBuy && <button className="btn btn-sm" onClick={() => buyOne(r)}>{t('buy')}</button>}
                         {canAddShopping && <button className="btn btn-ghost btn-sm" onClick={() => { setEditing(r); setShowForm(true) }}>{t('edit')}</button>}
-                        {canTransact && <button className="btn btn-ghost btn-sm btn-danger" onClick={() => del(r.id)}>{t('delete')}</button>}
+                        {/* Re-raise something bought before. Open to anyone who may add a
+                            row, since that is exactly what it does. */}
+                        {canAddShopping && (
+                          <button className="btn btn-ghost btn-sm" onClick={() => duplicate(r)}>
+                            {t('duplicate')}
+                          </button>
+                        )}
+                        {/* Mirrors the row-level policy instead of guessing at it: a mentor,
+                            or the person who raised it while it has not been bought. A button
+                            the database then refuses is worse than no button. */}
+                        {(isMentor || (r.created_by === uid && !r.transaction_id)) && (
+                          <button className="btn btn-ghost btn-sm btn-danger" onClick={() => del(r.id)}>
+                            {t('delete')}
+                          </button>
+                        )}
                       </td>
                     )}
                   </tr>

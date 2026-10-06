@@ -8,11 +8,11 @@ import { useAuth } from '../context/AuthContext'
 import Modal from './Modal'
 import { catLabel } from '../context/LookupsContext'
 import { TeamScopePicker } from './TeamScope'
-import { SELECTABLE_STATUSES, SHOPPING_STATUS } from '../domain/constants'
+import { SHOPPING_STATUS, allowedStatusesFor } from '../domain/constants'
 
 export default function ShoppingForm({ editing, seasonId, categoryTree, vendorsActive, levels, templates = [], onClose, onSaved }) {
   const { t } = useI18n()
-  const { isMentor } = useAuth()
+  const { isMentor, isFinanceLead } = useAuth()
 
   const knownVendor = editing?.vendor && vendorsActive.some((v) => v.name === editing.vendor)
   const [vendorMode, setVendorMode] = useState(() => (editing?.vendor && !knownVendor ? 'other' : 'list'))
@@ -26,7 +26,7 @@ export default function ShoppingForm({ editing, seasonId, categoryTree, vendorsA
     est_price: editing?.est_price || '',
     quantity: editing?.quantity ?? 1,
     priority_level_id: editing?.priority_level_id || '',
-    status: editing?.status || SHOPPING_STATUS.PENDING,
+    status: editing?.status || SHOPPING_STATUS.WAITING_FINANCE,
     notes: editing?.notes || '',
     template_id: editing?.template_id || '',
     team_scope: editing?.team_scope || 'both',
@@ -37,6 +37,10 @@ export default function ShoppingForm({ editing, seasonId, categoryTree, vendorsA
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value })
 
   const template = templates.find((tp) => tp.id === f.template_id)
+
+  // Which statuses this person may set here. On a NEW row there is no current
+  // status to be locked by, so the row's status is the one being created.
+  const statusTargets = allowedStatusesFor({ isMentor, isFinanceLead }, editing?.status)
   // Fields saved before typed fields existed have no `type` — read them as text.
   const tfields = (template?.fields || []).map((fld) => ({ ...fld, type: fld.type || 'text' }))
 
@@ -53,6 +57,13 @@ export default function ShoppingForm({ editing, seasonId, categoryTree, vendorsA
     if (!f.name.trim()) { setErr(t('requiredField') + ': ' + t('name')); return }
     if (!f.sku.trim()) { setErr(t('requiredField') + ': ' + t('sku')); return }
     if (!f.category_id) { setErr(t('requiredField') + ': ' + t('category')); return }
+    // Required only while there is something to pick. A mentor who
+    // deactivates every priority level would otherwise lock the whole list:
+    // an error nobody can satisfy and no way to add an item at all. The same
+    // holds for the moment before the lookups have loaded.
+    if (levels.length && !f.priority_level_id) {
+      setErr(t('requiredField') + ': ' + t('priority')); return
+    }
     // required template fields
     for (const fld of tfields) {
       if (fld.required && isBlank(spec[fld.label])) { setErr(t('requiredField') + ': ' + fld.label); return }
@@ -85,8 +96,13 @@ export default function ShoppingForm({ editing, seasonId, categoryTree, vendorsA
       spec: template ? spec : null,
       description: template ? composed : (f.notes || null),
     }
-    if (isMentor) payload.status = f.status
-    else if (!editing) payload.status = SHOPPING_STATUS.PENDING
+    // Only send a status if this person is allowed to set the one they chose.
+    // On create the column default decides, which is the single place the
+    // starting status is written down.
+    // Left out entirely when this person may not set the chosen status: on a
+    // new row the column default decides, and on an edit the row keeps what it
+    // has. payload never carries a status otherwise.
+    if (statusTargets.includes(f.status)) payload.status = f.status
 
     const res = editing
       ? await mutate('shopping_items', (q) => q.update(payload).eq('id', editing.id))
@@ -223,17 +239,24 @@ export default function ShoppingForm({ editing, seasonId, categoryTree, vendorsA
       </div>
       <div className="grid-2">
         <div className="field">
-          <label>{t('priority')}</label>
+          <label>{t('priority')}{levels.length ? ' *' : ''}</label>
           <select value={f.priority_level_id} onChange={set('priority_level_id')}>
             <option value="">—</option>
             {levels.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
+          {!levels.length && (
+            <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4 }}>
+              {t('noPriorityLevels')}
+            </div>
+          )}
         </div>
-        {isMentor && (
+        {statusTargets.length > 0 && (
           <div className="field">
             <label>{t('status')}</label>
             <select value={f.status} onChange={set('status')}>
-              {SELECTABLE_STATUSES.map((s) => <option key={s} value={s}>{t(s)}</option>)}
+              {[...new Set([f.status, ...statusTargets])].map((s) => (
+                <option key={s} value={s} disabled={!statusTargets.includes(s)}>{t(s)}</option>
+              ))}
             </select>
           </div>
         )}

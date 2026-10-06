@@ -1,0 +1,27 @@
+-- ============================================================================
+--  Migration 50 — the new shopping status value, ON ITS OWN.
+--
+--  RUN THIS FIRST, THEN 51. They are two files for a reason, not for tidiness.
+--
+--  Postgres lets `alter type ... add value` run inside a transaction, but the
+--  new value CANNOT BE USED until that transaction has committed. Migration 51
+--  uses 'waiting_finance' — as the column default and inside the trigger — so
+--  if both ran together you would get:
+--
+--      ERROR: unsafe use of new value "waiting_finance" of enum type
+--
+--  Running this file, waiting for it to finish, and then running 51 is all it
+--  takes. Re-running either is harmless.
+-- ============================================================================
+
+-- Where a request now starts: raised by a student, waiting for the finance
+-- lead to look at it. What used to be 'pending_approval' has been split into
+-- two waits, because they are two different people's queues:
+--
+--   waiting_finance   → waiting for the finance lead to triage it
+--   pending_approval  → triaged, now waiting for a mentor to approve it
+--
+-- Existing rows keep 'pending_approval', which under the new reading means
+-- "already past triage, with the mentors". That is true of them, so there is
+-- no data to migrate.
+alter type shopping_status add value if not exists 'waiting_finance';

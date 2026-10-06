@@ -85,6 +85,11 @@ export function AuthProvider({ children }) {
   const role = isGuest ? 'parent' : (member?.role || null)
   const isMentor = role === 'mentor'
   const isStudent = role === 'student'
+  // A flag on the member row, not a role of its own. The role whitelists in
+  // the policies — 28 lines reading `in ('mentor','student')` — all still see
+  // a student, so a finance lead keeps every student right automatically
+  // instead of losing them one silent 401 at a time.
+  const isFinanceLead = !isGuest && !!member?.is_finance_lead
   const isEditor = role === 'editor'
   const isParent = isGuest
   const value = {
@@ -94,6 +99,7 @@ export function AuthProvider({ children }) {
     role,
     isMentor,
     isStudent,
+    isFinanceLead,
     isParent,
     isGuest,
     enterGuestMode,
@@ -107,7 +113,12 @@ export function AuthProvider({ children }) {
     canPropose: isMentor || isStudent || isEditor,
     canBudget: isMentor || isStudent,            // add & edit budgets
     canAddShopping: isMentor || isStudent,       // add & edit shopping items
-    canChangeStatus: isMentor,                   // change a shopping item's status
+    // Which statuses, and on which rows, is decided by allowedStatusesFor()
+    // in domain/constants — this only says whether the control appears at all.
+    canChangeStatus: isMentor || isFinanceLead,  // change a shopping item's status
+    // Clearing out other people's unbought rows. Their own rows are covered
+    // for everyone by the delete policy; this is the extra reach.
+    canDeleteAnyShopping: isMentor || isFinanceLead,
     canSettings: isMentor,                       // manage config tables
     canEdit: isMentor,                           // legacy alias -> mentor only
     // Leaving guest mode is a sign-out from the user's point of view even

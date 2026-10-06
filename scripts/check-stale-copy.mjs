@@ -161,7 +161,7 @@ for (const p of GUEST_PAGES) {
 // check that fires on correct code gets ignored, which is worse than no check.
 // Any copy of the full list necessarily contains 'pending_approval' and
 // 'ordered', so the narrow rule still catches the thing worth catching.
-const STATUS_LITERALS = /'(wish|pending_approval|waiting_sponsor|ordered)'/
+const STATUS_LITERALS = /'(wish|pending_approval|waiting_finance|waiting_sponsor|ordered)'/
 let statusCopy = 0
 const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
   e.isDirectory() ? walk(`${dir}/${e.name}`)
@@ -180,6 +180,102 @@ for (const f of walk('src')) {
   }
 }
 
-bad += inlineSize + lockLeak + unguardedPayer + unbranched + bareUid + statusCopy
+
+// A custom property that is used but never defined. CSS does not warn: the
+// declaration is simply invalid at computed-value time, so the property falls
+// back to its initial value — `background: var(--brand)` becomes transparent.
+// That is how the calculator button shipped as a white glyph on a white page,
+// and how the = key disappeared from the keypad in the light theme, with the
+// build, the lint and every other check passing. A fallback — var(--x, #fff)
+// — is safe and is not flagged.
+const css = src('src/index.css')
+//
+// Definitions are read from :root ONLY, not from the whole file. A variable
+// defined solely inside [data-theme="neat"] is undefined in the light theme —
+// which is the same white-on-white failure, visible in one theme and not the
+// other. Taking any definition anywhere let exactly that case through: it
+// reported a pass with --on-orange deleted from :root and left in the dark
+// block. The theme block is for OVERRIDES; the base must carry every name.
+const rootBlock = css.slice(css.indexOf(':root {'), css.indexOf('}', css.indexOf(':root {')))
+const defined = new Set([...rootBlock.matchAll(/(--[a-z0-9-]+)\s*:/g)].map((m) => m[1]))
+// Names the dark theme adds on top. Legitimate inside a rule that only
+// applies when that theme is on — --blue-text is exactly that, and flagging
+// it would be flagging correct code.
+const themed = new Set([...css.matchAll(/(--[a-z0-9-]+)\s*:/g)].map((m) => m[1]))
+let undef = 0
+const seen = new Set()
+for (const f of ['src/index.css', ...walk('src')]) {
+  const lines = src(f).replace(/\/\*[\s\S]*?\*\//g, (c) => c.replace(/[^\n]/g, ' ')).split('\n')
+  for (let i = 0; i < lines.length; i++) {
+    // A variable NAMED in a comment is prose — including the comment that
+    // explains why a broken one was removed.
+    const code = lines[i].replace(/\/\/.*$/, '')
+    // Which selector is this line inside? Walk back to the nearest `{`,
+    // taking two lines above it as well so a multi-line selector list is
+    // read whole.
+    let sel = ''
+    for (let j = i; j >= 0; j--) {
+      if (lines[j].includes('{')) { sel = lines.slice(Math.max(0, j - 2), j + 1).join(' '); break }
+    }
+    const inThemedRule = sel.includes('[data-theme=')
+    const ok = inThemedRule ? themed : defined
+    for (const m of code.matchAll(/var\((--[a-z0-9-]+)\s*\)/g)) {
+      if (ok.has(m[1]) || seen.has(m[1] + f)) continue
+      seen.add(m[1] + f)
+      undef++
+      console.log(`  UNDEFINED CSS VARIABLE ${m[1]} in ${f}:${i + 1}`)
+      console.log('         nothing defines it — the declaration is dropped and the value falls back')
+    }
+  }
+}
+
+
+// The finance lead's rule is written twice: in guard_shopping_status()
+// (migration 51), which is the boundary, and in domain/constants.js, which
+// decides what the UI offers. They have to agree. If the SQL is stricter you
+// get buttons the database refuses; if the JS is stricter you get a quiet hole
+// where the UI is the only thing stopping someone, and this app sends PATCHes
+// straight to PostgREST.
+const sql = (() => { try { return src('51_finance_lead.sql') } catch { return '' } })()
+let ruleDrift = 0
+if (sql) {
+  const consts = src('src/domain/constants.js')
+  // SHOPPING_STATUS.X -> its string value, so the JS lists can be compared
+  // against the literals the SQL uses.
+  const values = Object.fromEntries(
+    [...consts.matchAll(/^\s*([A-Z_]+):\s*'([a-z_]+)',/gm)].map((m) => [m[1], m[2]]))
+  const jsList = (name) => {
+    const at = consts.indexOf(`export const ${name} = Object.freeze([`)
+    if (at === -1) return null
+    const body = consts.slice(at, consts.indexOf('])', at))
+    return [...body.matchAll(/SHOPPING_STATUS\.([A-Z_]+)/g)].map((m) => values[m[1]]).sort()
+  }
+  const sqlList = (re) => {
+    const m = sql.match(re)
+    return m ? [...m[1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]).sort() : null
+  }
+  const pairs = [
+    ['FINANCE_LEAD_STATUSES', /new\.status not in \(([^)]*)\)/, 'what a finance lead may set'],
+    ['MENTOR_DECIDED_STATUSES', /old\.status in \(([^)]*)\)/, 'what locks a row against them'],
+  ]
+  for (const [name, re, what] of pairs) {
+    const a = jsList(name)
+    const b = sqlList(re)
+    if (!a || !b) {
+      ruleDrift++
+      console.log(`  CANNOT COMPARE ${name} WITH 51_finance_lead.sql`)
+      console.log('         one of the two lists could not be read — check the names still match')
+      continue
+    }
+    if (a.join(',') !== b.join(',')) {
+      ruleDrift++
+      console.log(`  ${name} DISAGREES WITH THE TRIGGER (${what})`)
+      console.log(`         constants.js: ${a.join(', ')}`)
+      console.log(`         migration 51: ${b.join(', ')}`)
+    }
+  }
+}
+
+bad += inlineSize + lockLeak + unguardedPayer + unbranched + bareUid + statusCopy + undef + ruleDrift
 console.log(bad ? `\n  ${bad} problem(s)` : '  no stale strings')
 process.exit(bad ? 1 : 0)

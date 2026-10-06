@@ -2,6 +2,10 @@
   /* Brand */
   --orange: #ff9100;          /* primary action + money OUT (fills/buttons) */
   --orange-strong: #e07f00;
+  /* Ink for anything sitting ON the orange. White fails on it (3.29:1),
+     so every orange fill in the app uses this, not #fff. Named once so a
+     new orange control cannot quietly pick white and fail contrast. */
+  --on-orange: #241300;
   --blue: #1100ff;            /* brand blue + money IN */
   --blue-soft: #3346ff;
 
@@ -85,7 +89,7 @@ button { font-family: inherit; cursor: pointer; }
 }
 .btn:hover { border-color: var(--orange); background: var(--panel-2); }
 .btn:active { transform: translateY(1px); }
-.btn-primary { background: var(--orange); border-color: var(--orange); color: #241300; }
+.btn-primary { background: var(--orange); border-color: var(--orange); color: var(--on-orange); }
 .btn-primary:hover { background: #ffa42e; border-color: #ffa42e; }
 .btn-ghost { background: transparent; border-color: transparent; color: var(--text-dim); }
 .btn-ghost:hover { color: var(--text); border-color: var(--line-strong); background: transparent; }
@@ -370,6 +374,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
 
   --orange: #ff4f13;          /* straight from the emblem */
   --orange-strong: #ff6b3d;
+  --on-orange: #000;
 
   --in: #6f8cff;              /* money in  — blue family */
   --out: #ff8351;             /* money out — orange, lifted for long figures */
@@ -409,9 +414,8 @@ html, body { max-width: 100%; overflow-x: hidden; }
 }
 
 /* The emblem orange is bright enough that white on it fails (3.29:1) while
-   black passes (6.38:1). Primary buttons therefore carry black text in this
-   theme — the one place the light theme's white would be unreadable. */
-[data-theme="neat"] .btn-primary { color: #000; }
+   black passes (6.38:1), so anything on the orange uses --on-orange, which is
+   defined per theme beside the orange itself rather than overridden here. */
 
 [data-theme="neat"] .sidebar {
   background: linear-gradient(180deg, #0c1856 0%, #04092a 100%);
@@ -716,18 +720,9 @@ html, body { max-width: 100%; overflow-x: hidden; }
 
 .print-only { display: none; }
 
-/* Status chips on the shopping list — a filter you can see the state of at a
-   glance, rather than a dropdown that hides which single value is selected. */
-.status-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.chip {
-  font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
-  padding: 5px 10px; border-radius: 999px;
-  border: 1px solid var(--line-strong); background: var(--bg-0);
-  color: var(--text-dim); white-space: nowrap;
-}
-.chip-on { background: var(--blue); border-color: var(--blue); color: #fff; }
-.chip-count { opacity: .65; font-weight: 400; margin-inline-start: 3px; }
-@media (hover: none) and (pointer: coarse) { .chip { min-height: 2.25rem; } }
+/* The status chips that used to live here are gone — the shopping filter is a
+   MultiSelect dropdown now, and nothing has carried class="chip" since. The
+   rules were dead, and one of them painted var(--bg-0), which nothing defines. */
 
 /* Read-only detail view. A definition list rather than a form: nothing here
    is typed into, and the label/value pairing survives narrow screens by
@@ -970,15 +965,29 @@ table.data td.desc-cell { min-width: 12rem; }
 }
 
 /* ---------- Floating calculator ---------- */
+/* The colour here was var(--brand) — a variable NOTHING defines. An unknown
+   custom property makes the declaration invalid, so the background fell back
+   to transparent and the button became a white glyph on a white page in the
+   light theme. Same for the = key and the active tab below. It is the app's
+   primary-action orange now, like every other main action. */
 .calc-fab {
   position: fixed; z-index: 60;
   inset-inline-end: 16px; bottom: 16px;
   width: 48px; height: 48px; border-radius: 50%;
-  background: var(--brand); color: #fff; border: none;
-  font-size: 20px; font-weight: 700; cursor: pointer;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, .22);
+  background: var(--orange); color: var(--on-orange); border: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  /* Still slightly see-through — but now over a colour rather than over
+     nothing, which is what made it disappear. */
+  opacity: .92;
+  backdrop-filter: blur(4px);
+  /* A defined rim as well as the glow. Orange on a near-white page is only
+     1.9:1 as a SHAPE — that is orange, not a mistake — so the circle gets
+     an edge of its own rather than relying on a soft shadow to end it.
+     The icon inside carries the real contrast, at 9.8:1. */
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .22), 0 0 0 1px var(--orange-strong);
 }
-.calc-fab:hover { filter: brightness(1.1); }
+.calc-fab:hover { opacity: 1; filter: brightness(1.06); }
 
 .calc-panel {
   position: fixed; z-index: 60;
@@ -1003,7 +1012,7 @@ table.data td.desc-cell { min-width: 12rem; }
   padding: 5px 10px; border: none; border-radius: 6px;
   background: none; color: var(--text-dim); font-size: 13px; cursor: pointer;
 }
-.calc-tabs button.is-on { background: var(--brand); color: #fff; font-weight: 600; }
+.calc-tabs button.is-on { background: var(--orange); color: var(--on-orange); font-weight: 600; }
 .calc-close {
   border: none; background: none; color: var(--text-faint);
   font-size: 15px; cursor: pointer; padding: 4px 6px;
@@ -1032,7 +1041,7 @@ table.data td.desc-cell { min-width: 12rem; }
   color: var(--text); font-size: 15px; cursor: pointer;
 }
 .calc-keys button:hover { background: var(--panel-2); }
-.calc-keys .calc-eq { background: var(--brand); color: #fff; border-color: var(--brand); }
+.calc-keys .calc-eq { background: var(--orange); color: var(--on-orange); border-color: var(--orange); }
 
 .calc-var { display: flex; align-items: center; gap: 8px; margin-top: 7px; }
 .calc-var label {

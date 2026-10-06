@@ -102,6 +102,9 @@ export default function Settings() {
         { key: 'role', label: t('role'), type: 'select', default: 'viewer', options: [
           { value: 'mentor', label: t('mentor') }, { value: 'student', label: t('student') }, { value: 'viewer', label: t('viewer') },
         ] },
+        // Not a fourth role: a student who also triages the shopping list.
+        // See migration 51 for why it is a flag rather than a role.
+        { key: 'is_finance_lead', label: t('financeLead'), type: 'checkbox', default: false },
       ],
     },
   }

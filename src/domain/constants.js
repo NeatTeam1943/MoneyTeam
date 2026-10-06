@@ -41,6 +41,14 @@ export const TX = Object.freeze({
 /** Shopping statuses. */
 export const SHOPPING_STATUS = Object.freeze({
   WISH: 'wish',
+  /** Raised, waiting for the finance lead to triage it. Where a new row starts
+   *  — the column default, so this list's order is the only place the chain is
+   *  written down. */
+  WAITING_FINANCE: 'waiting_finance',
+  /** Triaged, waiting for a MENTOR. The name is the original one and the data
+   *  is untouched; what changed is that it no longer means "nobody has looked
+   *  at this yet". The Hebrew label says "ממתין לאישור מנטור" so the two waits
+   *  cannot be mistaken for each other on screen. */
   PENDING: 'pending_approval',
   WAITING_SPONSOR: 'waiting_sponsor',
   APPROVED: 'approved',
@@ -57,21 +65,65 @@ export const SHOPPING_STATUS = Object.freeze({
 export const SELECTABLE_STATUSES = Object.freeze(
   Object.values(SHOPPING_STATUS).filter((s) => s !== SHOPPING_STATUS.WISH))
 
+/** Statuses that still count as "waiting to be bought", and so as money the
+ *  team has not yet found.
+ *
+ *  `waiting_finance` MUST be in here. It is the column default, so every new
+ *  row lands in it; leaving it out would empty the "requested" total on the
+ *  dashboard and the funding gap on the budgets page within a day, and the
+ *  figure would look like a win rather than a bug. `waiting_sponsor` is in for
+ *  the same kind of reason: a sponsor may still decline, and a gap that
+ *  quietly shrinks is wrong in the dangerous direction. */
+export const OPEN_STATUSES = Object.freeze([
+  SHOPPING_STATUS.WAITING_FINANCE,
+  SHOPPING_STATUS.PENDING,
+  SHOPPING_STATUS.WAITING_SPONSOR,
+  SHOPPING_STATUS.APPROVED,
+])
+
 /** Statuses a wish-list row can still be turned into a purchase from.
  *
- *  `waiting_sponsor` is deliberately NOT here. Buying an item the team is
- *  waiting on a sponsor for is a decision to stop waiting, and it should be
- *  made one row at a time — not by a sponsor-pending row being swept into a
- *  "buy selected" basket alongside four approved ones. Moving it to
- *  "approved" first says out loud that the team is paying after all. */
-export const BUYABLE_STATUSES = Object.freeze([SHOPPING_STATUS.PENDING, SHOPPING_STATUS.APPROVED])
+ *  The same set as OPEN, by decision: a mentor seeing an obvious row should
+ *  not have to walk it through triage before paying for it. Kept as its own
+ *  name rather than an alias because the two answer different questions —
+ *  "does this still cost us money" and "can I buy it right now" — and one is
+ *  likely to narrow without the other. */
+export const BUYABLE_STATUSES = Object.freeze([...OPEN_STATUSES])
 
-/** Statuses that still count as "waiting to be bought", and so as money the
- *  team has not yet found. Wider than BUYABLE: a sponsor may still decline,
- *  and a funding gap that quietly shrinks because an item was parked under
- *  "waiting for sponsor" is wrong in the dangerous direction. */
-export const OPEN_STATUSES = Object.freeze(
-  [...BUYABLE_STATUSES, SHOPPING_STATUS.WAITING_SPONSOR])
+/** The statuses a FINANCE LEAD may move a request into.
+ *
+ *  Triage, in other words: which queue is this in, or is it not happening.
+ *  Approving, ordering and receiving are statements about money the team has
+ *  committed and stay a mentor's to make.
+ *
+ *  This list is a copy of the one in guard_shopping_status() (migration 51),
+ *  which is the real boundary — the app talks to PostgREST directly, so the
+ *  UI only decides what is worth offering. If you change one, change both. */
+export const FINANCE_LEAD_STATUSES = Object.freeze([
+  SHOPPING_STATUS.WAITING_FINANCE,
+  SHOPPING_STATUS.WAITING_SPONSOR,
+  SHOPPING_STATUS.PENDING,
+  SHOPPING_STATUS.CANCELLED,
+])
+
+/** Statuses that mean a mentor has already decided on the item. A finance lead
+ *  cannot move a row OUT of one of these — cancelling an approved or paid-for
+ *  item would be overruling that decision. Also mirrored in migration 51. */
+export const MENTOR_DECIDED_STATUSES = Object.freeze([
+  SHOPPING_STATUS.APPROVED,
+  SHOPPING_STATUS.ORDERED,
+  SHOPPING_STATUS.RECEIVED,
+])
+
+/** Which statuses this person may move the given row into — the single answer
+ *  used by the row dropdown, the form and the bulk action, so the three cannot
+ *  disagree. An empty list means the row is not theirs to move. */
+export function allowedStatusesFor({ isMentor, isFinanceLead }, currentStatus) {
+  if (isMentor) return SELECTABLE_STATUSES
+  if (!isFinanceLead) return []
+  if (MENTOR_DECIDED_STATUSES.includes(currentStatus)) return []
+  return FINANCE_LEAD_STATUSES
+}
 
 /** What the shopping list shows before anyone touches the filter.
  *  Everything except the two that are finished with: a received item has

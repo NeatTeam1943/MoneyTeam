@@ -19,7 +19,7 @@ import MultiSelect from '../components/MultiSelect'
 import DetailPanel from '../components/DetailPanel'
 import { filterRows, sortRows } from '../domain/shopping'
 import { splitByExclusivity } from '../lib/teamScope'
-import { BUYABLE_STATUSES, DEFAULT_SHOPPING_STATUSES, OPEN_STATUSES, SELECTABLE_STATUSES, SHOPPING_STATUS } from '../domain/constants'
+import { BUYABLE_STATUSES, DEFAULT_SHOPPING_STATUSES, OPEN_STATUSES, SELECTABLE_STATUSES, SHOPPING_STATUS, allowedStatusesFor } from '../domain/constants'
 
 // Axis labels and grid lines follow the theme too: #4c5570 on a dark panel is
 // 2.3:1 and #dde2ee grid lines glow. SVG resolves CSS variables the same way
@@ -46,7 +46,7 @@ function Stat({ k, v, c }) {
 
 export default function Shopping() {
   const { t } = useI18n()
-  const { canAddShopping, canChangeStatus, canTransact, isMentor, session } = useAuth()
+  const { canAddShopping, canChangeStatus, canDeleteAnyShopping, canTransact, isMentor, isFinanceLead, session } = useAuth()
   // Anyone who can act on a selection gets tick boxes — buying is not the only
   // reason to select rows any more.
   const canSelect = canTransact || canChangeStatus
@@ -284,7 +284,10 @@ export default function Shopping() {
   // this for anyone who is not a mentor, so the button is a convenience gate,
   // not the security boundary.
   async function bulkStatus(status) {
-    const ids = selectedItems.map((r) => r.id)
+    // Only the rows this person may move — see bulkSettable. The count in the
+    // confirmation is that number, not the selection size, so nobody confirms
+    // "change 6 items" and gets 4.
+    const ids = bulkSettable.map((r) => r.id)
     if (!ids.length) return
     if (!confirm(t('confirmBulkStatus').replace('{n}', ids.length).replace('{s}', t(status)))) return
     const { error } = await supabase.from('shopping_items').update({ status }).in('id', ids)
@@ -334,6 +337,21 @@ export default function Shopping() {
   const buyableItems = useMemo(
     () => selectedItems.filter((r) => BUYABLE_STATUSES.includes(r.status)),
     [selectedItems])
+
+  // Which of the selected rows this person may actually move, and the statuses
+  // they may all be moved to. Both matter: a single UPDATE covering a row the
+  // trigger refuses aborts the WHOLE statement, so a mentor-approved row in the
+  // selection would otherwise make a finance lead's bulk change fail entirely
+  // rather than skip that row.
+  const bulkSettable = useMemo(
+    () => selectedItems.filter((r) => allowedStatusesFor({ isMentor, isFinanceLead }, r.status).length),
+    [selectedItems, isMentor, isFinanceLead])
+  const bulkTargets = useMemo(() => {
+    if (!bulkSettable.length) return []
+    return bulkSettable
+      .map((r) => allowedStatusesFor({ isMentor, isFinanceLead }, r.status))
+      .reduce((acc, list) => acc.filter((s) => list.includes(s)))
+  }, [bulkSettable, isMentor, isFinanceLead])
   const allFilteredSelected = filtered.length > 0 && filtered.every((r) => selected.has(r.id))
   const buyPrefill = useMemo(() => {
     if (!buyableItems.length) return null
@@ -520,10 +538,10 @@ export default function Shopping() {
           </>
 
         )}
-        {canChangeStatus && selectedItems.length > 0 && (
+        {canChangeStatus && selectedItems.length > 0 && bulkTargets.length > 0 && (
           <select value="" onChange={(e) => { if (e.target.value) bulkStatus(e.target.value) }}>
-            <option value="">{t('bulkSetStatus')} ({selectedItems.length})</option>
-            {SELECTABLE_STATUSES.map((st) => <option key={st} value={st}>{t(st)}</option>)}
+            <option value="">{t('bulkSetStatus')} ({bulkSettable.length})</option>
+            {bulkTargets.map((st) => <option key={st} value={st}>{t(st)}</option>)}
           </select>
         )}
         {canTransact && buyableItems.length > 0 && <button className="btn btn-primary" onClick={() => setBuyOpen(true)}>{t('buySelected')} ({buyableItems.length})</button>}
@@ -567,11 +585,25 @@ export default function Shopping() {
                     <td className="num">{r.est_price != null ? money(r.est_price) : '—'}</td>
                     <td className="num">{r.quantity}</td>
                     <td>
-                      {canChangeStatus ? (
-                        <select value={r.status} onChange={(e) => changeStatus(r.id, e.target.value)} style={{ width: 'auto', padding: '4px 8px', fontSize: 13 }}>
-                          {SELECTABLE_STATUSES.map((s) => <option key={s} value={s}>{t(s)}</option>)}
-                        </select>
-                      ) : <span className="badge">{t(r.status)}</span>}
+                      {(() => {
+                        // What this person may move THIS row to. A finance lead
+                        // gets the triage statuses, and nothing at all once a
+                        // mentor has approved it — the trigger refuses either
+                        // way, and an option the database rejects is worse than
+                        // no option.
+                        const targets = allowedStatusesFor({ isMentor, isFinanceLead }, r.status)
+                        if (!targets.length) return <span className="badge">{t(r.status)}</span>
+                        return (
+                          <select value={r.status} onChange={(e) => changeStatus(r.id, e.target.value)} style={{ width: 'auto', padding: '4px 8px', fontSize: 13 }}>
+                            {/* The current value has to be listed even when it is
+                                not a permitted target, or the select would show
+                                a different status than the row actually has. */}
+                            {[...new Set([r.status, ...targets])].map((s) => (
+                              <option key={s} value={s} disabled={!targets.includes(s)}>{t(s)}</option>
+                            ))}
+                          </select>
+                        )
+                      })()}
                     </td>
                     <td>
                       {(() => {
@@ -602,10 +634,12 @@ export default function Shopping() {
                             {t('duplicate')}
                           </button>
                         )}
-                        {/* Mirrors the row-level policy instead of guessing at it: a mentor,
-                            or the person who raised it while it has not been bought. A button
-                            the database then refuses is worse than no button. */}
-                        {(isMentor || (r.created_by === uid && !r.transaction_id)) && (
+                        {/* Mirrors the row-level policy instead of guessing at it: a mentor;
+                            a finance lead, on any row not yet bought; or the person who raised
+                            it, on the same condition. A button the database then refuses is
+                            worse than no button. */}
+                        {(isMentor || (canDeleteAnyShopping && !r.transaction_id)
+                          || (r.created_by === uid && !r.transaction_id)) && (
                           <button className="btn btn-ghost btn-sm btn-danger" onClick={() => del(r.id)}>
                             {t('delete')}
                           </button>

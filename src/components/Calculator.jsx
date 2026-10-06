@@ -82,7 +82,22 @@ export default function Calculator() {
     return (
       <button className="calc-fab" onClick={() => setOpen(true)}
         aria-label={t('calculator')} title={t('calculator')}>
-        =
+        {/* Drawn rather than an emoji: an emoji is a different typeface on
+            every phone, cannot take the button's colour, and renders at a
+            size the button does not control. This inherits currentColor, so
+            it stays legible on the orange in both themes. */}
+        <svg width="23" height="23" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" strokeWidth="1.7"
+          strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <rect x="4.5" y="2.5" width="15" height="19" rx="2.5" />
+          <rect x="7.5" y="5.5" width="9" height="3.5" rx="1" />
+          <circle cx="8.2" cy="13" r="1" fill="currentColor" stroke="none" />
+          <circle cx="12" cy="13" r="1" fill="currentColor" stroke="none" />
+          <circle cx="15.8" cy="13" r="1" fill="currentColor" stroke="none" />
+          <circle cx="8.2" cy="17.2" r="1" fill="currentColor" stroke="none" />
+          <circle cx="12" cy="17.2" r="1" fill="currentColor" stroke="none" />
+          <circle cx="15.8" cy="17.2" r="1" fill="currentColor" stroke="none" />
+        </svg>
       </button>
     )
   }

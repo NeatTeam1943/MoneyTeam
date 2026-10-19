@@ -73,17 +73,19 @@ export default function IncomeLines({ lines, accounts, onChange, methods }) {
               <input list="payment-methods" value={l.payment_method || ''}
                 onChange={(e) => set(i, 'payment_method', e.target.value)} />
             </div>
-            </div>
 
-            <div className="il-field">
+            <div className="il-field il-account">
               {/* Per line, because a split registration lands in two accounts
-                  while remaining one payment and one receipt. */}
+                  while remaining one payment and one receipt. Wider than its
+                  neighbours because an account name is a name, not a number —
+                  but not a row of its own, which was mostly empty. */}
               <span>{t('account')}</span>
               <select value={l.account_id || ''}
                 onChange={(e) => set(i, 'account_id', e.target.value)}>
                 <option value="">—</option>
                 {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
+            </div>
             </div>
 
             <div className="il-foot">

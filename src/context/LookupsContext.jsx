@@ -53,18 +53,19 @@ function buildDescendants(cats) {
 // downstream useMemos (new identities each time) and made the UI feel laggy.
 export function LookupsProvider({ children }) {
   const { session, isParent } = useAuth()
-  const [data, setData] = useState({ accounts: [], categories: [], sources: [], levels: [], vendors: [], templates: [] })
+  const [data, setData] = useState({ accounts: [], categories: [], sources: [], levels: [], vendors: [], templates: [], paymentMethods: [] })
   const [loading, setLoading] = useState(true)
   const loadedFor = useRef(null)
 
   const load = useCallback(async () => {
-    const [a, c, s, p, v, tmpl] = await Promise.all([
+    const [a, c, s, p, v, tmpl, pm] = await Promise.all([
       supabase.from('accounts').select('*').order('name'),
       supabase.from('categories').select('*').order('name'),
       supabase.from('income_sources').select('*').order('name'),
       supabase.from('priority_levels').select('*').order('rank'),
       supabase.from('vendors').select('*').order('name'),
       supabase.from('shopping_templates').select('*').order('name'),
+      supabase.from('payment_methods').select('*').order('rank'),
     ])
     // Keep previous values for any query that failed, so a transient error
     // never blanks the UI.
@@ -75,6 +76,7 @@ export function LookupsProvider({ children }) {
       levels:     p.error    ? prev.levels     : (p.data || []),
       vendors:    v.error    ? prev.vendors    : (v.data || []),
       templates:  tmpl.error ? prev.templates  : (tmpl.data || []),
+      paymentMethods: pm.error ? prev.paymentMethods : (pm.data || []),
     }))
     setLoading(false)
   }, [])
@@ -89,13 +91,14 @@ export function LookupsProvider({ children }) {
   }, [session?.user?.id, isParent, load])
 
   const value = useMemo(() => {
-    const { accounts, categories, sources, levels, vendors, templates } = data
+    const { accounts, categories, sources, levels, vendors, templates, paymentMethods } = data
     const descendants = buildDescendants(categories)
     return {
-      accounts, categories, sources, levels, vendors, templates, loading, reload: load,
+      accounts, categories, sources, levels, vendors, templates, paymentMethods, loading, reload: load,
       accountsActive: accounts.filter(isActive),
       sourcesActive: sources.filter(isActive),
       vendorsActive: vendors.filter(isActive),
+      paymentMethodsActive: paymentMethods.filter(isActive),
       templatesActive: templates.filter(isActive),
       categoryTree: buildTree(categories),
       parentOf: Object.fromEntries(categories.map((c) => [c.id, c.parent_id])),

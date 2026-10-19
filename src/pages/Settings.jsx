@@ -20,7 +20,7 @@ export default function Settings() {
   const { reload: reloadLookups } = useLookups()
   const [tab, setTab] = useState('seasons')
 
-  const tabs = ['seasons', 'accounts', 'sources', 'categories', 'vendors', 'templates', 'priorityLevels', 'members', 'alerts']
+  const tabs = ['seasons', 'accounts', 'sources', 'categories', 'vendors', 'paymentMethods', 'templates', 'priorityLevels', 'members', 'alerts']
 
   const configs = {
     seasons: {
@@ -96,6 +96,14 @@ export default function Settings() {
         // — moving an item to one of them then asks why, and the answer is
         // kept on the item.
         { key: 'requires_reason', label: t('requiresReason'), type: 'checkbox', default: false },
+      ],
+    },
+    paymentMethods: {
+      table: 'payment_methods', orderBy: 'rank', canWrite: isMentor, onChanged: reloadLookups,
+      fields: [
+        { key: 'name', label: t('name'), type: 'text', required: true },
+        { key: 'rank', label: t('rank'), type: 'number', default: 0 },
+        { key: 'is_active', label: t('active'), type: 'checkbox', default: true },
       ],
     },
     members: {

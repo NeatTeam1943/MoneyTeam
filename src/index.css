@@ -1208,12 +1208,14 @@ table.data td.desc-cell { min-width: 12rem; }
   border: 1px solid var(--line); border-radius: var(--radius-sm);
   background: var(--panel-2);
 }
-/* Description and account take the full width; they are a sentence and a
-   name, and both were the first to be truncated into uselessness. The three
-   short fields share a row of their own and GROW into it — an auto-fit grid
-   left them at their minimum with half the row empty beside them. */
+/* The description takes the full width — it is a sentence. The rest share a
+   row and GROW into it; an auto-fit grid left them at their minimum with half
+   the row empty beside them. The account gets a larger basis than the three
+   numeric fields, because it holds a name, but it does not get a row of its
+   own: at this width that row was mostly empty. */
 .il-mid { display: flex; gap: 10px; flex-wrap: wrap; }
-.il-mid .il-field { flex: 1 1 7rem; }
+.il-mid .il-field { flex: 1 1 6rem; }
+.il-mid .il-account { flex: 2 1 10rem; }
 .income-line .il-field { min-width: 0; }
 .income-line .il-field > span {
   display: block; font-size: 11px; font-weight: 600;

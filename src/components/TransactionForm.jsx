@@ -9,9 +9,6 @@ import Modal from './Modal'
 import CurrencyAmountInput from './CurrencyAmountInput'
 import IncomeLines, { emptyIncomeLine, incomeLinesTotal } from './IncomeLines'
 
-/** Offered as suggestions, not as a closed list — the field stays free text,
- *  because the next parent will pay by something nobody thought of. */
-const PAYMENT_METHODS = ['מזומן', 'העברה בנקאית', 'ביט', 'צ׳ק', 'כרטיס אשראי', 'פייבוקס']
 import { TeamScopePicker } from './TeamScope'
 import { resolveBudget } from '../domain/budgetResolver'
 import { useLookups } from '../lib/useLookups'
@@ -376,7 +373,7 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
           <IncomeLines
             lines={incLines}
             accounts={accounts}
-            methods={PAYMENT_METHODS}
+            methods={lk.paymentMethodsActive.map((m) => m.name)}
             onChange={setIncLines}
           />
           {isMentor && (

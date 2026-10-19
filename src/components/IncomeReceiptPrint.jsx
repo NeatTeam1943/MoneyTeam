@@ -22,15 +22,27 @@ export default function IncomeReceiptPrint({ tx, lines, seasonName, payerName })
   const { t } = useI18n()
   const printedOn = new Date().toLocaleDateString('he-IL')
   const txDate = tx?.date ? new Date(tx.date).toLocaleDateString('he-IL') : ''
-  const total = (lines || []).reduce((s, l) => s + lineAmount(l), 0)
+  /**
+   * An income saved before breakdowns existed has no lines, and printing it
+   * produced a summary with no rows and a total of zero — a sheet that says
+   * the parent paid nothing. The header IS the single line in that case.
+   */
+  const rows = (lines && lines.length) ? lines : (tx ? [{
+    description: tx.description || t('income'),
+    unit_price: tx.amount,
+    quantity: 1,
+    amount: tx.amount,
+    payment_method: null,
+  }] : [])
+  const total = rows.reduce((s, l) => s + lineAmount(l), 0)
 
   return (
     <div className="receipt-print">
       <header className="receipt-head">
         <div className="receipt-team">NEAT TEAM 1943</div>
-        {/* Her wording, kept exactly: the title names who paid, so the sheet
-            identifies itself once it has been printed and separated from the
-            screen it came from. */}
+        {/* The title names who paid, so the sheet identifies itself once it
+            has been printed and separated from the screen it came from — and
+            so the saved PDF is named after it rather than after the app. */}
         <h1>{t('paymentSummary')} · {payerName || t('unknownPayer')}</h1>
         <div className="receipt-meta">
           {seasonName ? `${seasonName} · ` : ''}{t('printedOn')} {printedOn}
@@ -52,7 +64,7 @@ export default function IncomeReceiptPrint({ tx, lines, seasonName, payerName })
           </tr>
         </thead>
         <tbody>
-          {(lines || []).map((l, i) => {
+          {rows.map((l, i) => {
             const amount = lineAmount(l)
             return (
               <tr key={l.id || i} className={amount < 0 ? 'receipt-discount' : undefined}>

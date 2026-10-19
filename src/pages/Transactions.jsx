@@ -64,12 +64,27 @@ export default function Transactions() {
   useEffect(() => {
     if (!receiptFor) return
     document.body.classList.add('printing-receipt')
+    // The browser names the saved PDF after document.title, and prints it in
+    // the page header. Left alone that is "MoneyTeam · Neat Team 1943" on
+    // every summary, so they are indistinguishable in a downloads folder.
+    const prevTitle = document.title
+    const who = receiptFor.payer_name || receiptFor.payer_display || t('unknownPayer')
+    document.title = `${t('paymentSummary')} - ${who}`
     // Clear up after the dialog closes either way — Chrome fires afterprint
     // on cancel too, so a cancelled print does not leave the app hidden.
-    const done = () => { document.body.classList.remove('printing-receipt'); setReceiptFor(null) }
+    const done = () => {
+      document.body.classList.remove('printing-receipt')
+      document.title = prevTitle
+      setReceiptFor(null)
+    }
     window.addEventListener('afterprint', done, { once: true })
     const id = setTimeout(() => window.print(), 50)
-    return () => { clearTimeout(id); window.removeEventListener('afterprint', done); document.body.classList.remove('printing-receipt') }
+    return () => {
+      clearTimeout(id)
+      window.removeEventListener('afterprint', done)
+      document.body.classList.remove('printing-receipt')
+      document.title = prevTitle
+    }
   }, [receiptFor])
 
   const masked = (r) => r?.amounts_private && !isMentor

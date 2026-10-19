@@ -1237,6 +1237,13 @@ table.data td.desc-cell { min-width: 12rem; }
    Hiding its controls one by one is how the simulation's first print came out
    as a page of filter chips. */
 @media print {
-  body.printing-receipt .app { display: none !important; }
+  /* Every direct child of body except the document itself.
+     Hiding `.app` was not enough: `#root` carries `height: 100%` (line 59),
+     so with the app hidden inside it the wrapper still occupied a full page
+     and pushed the summary onto the next one — which is exactly how it came
+     out, an empty first page and the table stranded at the bottom. Written
+     against body's children so it also covers anything portalled out of the
+     React tree, which is where the open dialog lives. */
+  body.printing-receipt > *:not(.receipt-print) { display: none !important; }
   body.printing-receipt .receipt-print { display: block !important; }
 }

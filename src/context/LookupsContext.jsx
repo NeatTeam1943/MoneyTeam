@@ -65,7 +65,7 @@ export function LookupsProvider({ children }) {
       supabase.from('priority_levels').select('*').order('rank'),
       supabase.from('vendors').select('*').order('name'),
       supabase.from('shopping_templates').select('*').order('name'),
-      supabase.from('payment_methods').select('*').order('rank'),
+      supabase.from('payment_methods').select('*').order('name'),
     ])
     // Keep previous values for any query that failed, so a transient error
     // never blanks the UI.

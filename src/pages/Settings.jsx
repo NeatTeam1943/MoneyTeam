@@ -99,10 +99,14 @@ export default function Settings() {
       ],
     },
     paymentMethods: {
-      table: 'payment_methods', orderBy: 'rank', canWrite: isMentor, onChanged: reloadLookups,
+      // Alphabetical. There is no display-order field: six payment methods do
+      // not need to be arranged by hand, and a number whose only job is to
+      // decide which of them comes first is a question to answer for no gain.
+      // The `rank` column still exists in the table and is simply unused.
+      table: 'payment_methods', orderBy: 'name', canWrite: isMentor, onChanged: reloadLookups,
+      hint: t('paymentMethodsHint'),
       fields: [
         { key: 'name', label: t('name'), type: 'text', required: true },
-        { key: 'rank', label: t('rank'), type: 'number', default: 0 },
         { key: 'is_active', label: t('active'), type: 'checkbox', default: true },
       ],
     },

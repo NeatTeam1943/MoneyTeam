@@ -8,7 +8,8 @@ import { useAuth } from '../context/AuthContext'
 import Modal from './Modal'
 import { catLabel } from '../context/LookupsContext'
 import { TeamScopePicker } from './TeamScope'
-import { SHOPPING_STATUS, allowedStatusesFor } from '../domain/constants'
+import { SHOPPING_STATUS, allowedStatusesFor, statusChangeNeedsReason } from '../domain/constants'
+import ReasonPrompt from './ReasonPrompt'
 
 export default function ShoppingForm({ editing, seasonId, categoryTree, vendorsActive, levels, templates = [], onClose, onSaved }) {
   const { t } = useI18n()
@@ -32,6 +33,9 @@ export default function ShoppingForm({ editing, seasonId, categoryTree, vendorsA
     team_scope: editing?.team_scope || 'both',
   }))
   const [spec, setSpec] = useState(() => editing?.spec || {})
+  // The changes on this form that owe an explanation. Null until save is
+  // pressed; an array opens the "why?" box.
+  const [asking, setAsking] = useState(null)
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value })
@@ -53,7 +57,28 @@ export default function ShoppingForm({ editing, seasonId, categoryTree, vendorsA
     setSpec({ ...spec, [label]: cur.includes(opt) ? cur.filter((x) => x !== opt) : [...cur, opt] })
   }
 
-  async function save() {
+  /**
+   * Which of the changes about to be saved should say why.
+   *
+   * The same rule the list uses, applied here because the form is the other
+   * way to make these changes — and a rule you can walk around by opening the
+   * edit dialog is not a rule. Creating an item is never asked about: there is
+   * no previous state for the change to be a step back from.
+   */
+  function reasonsNeeded() {
+    if (!editing) return []
+    const out = []
+    if (f.status !== editing.status && statusChangeNeedsReason(editing.status, f.status)) {
+      out.push({ field: 'status', from: editing.status, to: f.status })
+    }
+    const lvl = levels.find((l) => l.id === f.priority_level_id)
+    if (f.priority_level_id !== editing.priority_level_id && lvl?.requires_reason) {
+      out.push({ field: 'priority', from: editing.priority_level_id, to: f.priority_level_id })
+    }
+    return out
+  }
+
+  async function save(note) {
     if (!f.name.trim()) { setErr(t('requiredField') + ': ' + t('name')); return }
     if (!f.sku.trim()) { setErr(t('requiredField') + ': ' + t('sku')); return }
     if (!f.category_id) { setErr(t('requiredField') + ': ' + t('category')); return }
@@ -104,11 +129,28 @@ export default function ShoppingForm({ editing, seasonId, categoryTree, vendorsA
     // has. payload never carries a status otherwise.
     if (statusTargets.includes(f.status)) payload.status = f.status
 
+    // Ask before writing anything. Saving first and asking after would leave
+    // the change made and the reason optional, which is the gap this closes.
+    const needed = reasonsNeeded()
+    if (needed.length && !note) { setBusy(false); setAsking(needed); return }
+
     const res = editing
       ? await mutate('shopping_items', (q) => q.update(payload).eq('id', editing.id))
       : await mutate('shopping_items', (q) => q.insert(payload))
+    if (res.error) { setBusy(false); setErr(res.error.message); return }
+
+    if (note && needed.length) {
+      // One note per changed field, same text: the sentence explains the edit,
+      // and filing it against both is what lets the list show it beside
+      // whichever of the two the reader is looking at.
+      const { error } = await supabase.from('shopping_change_notes').insert(
+        needed.map((n) => ({
+          item_id: editing.id, field: n.field,
+          from_value: n.from ?? null, to_value: n.to ?? null, note,
+        })))
+      if (error) { setBusy(false); setErr(t('reasonNotSaved') + ': ' + error.message); return }
+    }
     setBusy(false)
-    if (res.error) { setErr(res.error.message); return }
     onSaved()
   }
 
@@ -263,6 +305,16 @@ export default function ShoppingForm({ editing, seasonId, categoryTree, vendorsA
       </div>
       {!template && <div className="field"><label>{t('notes')}</label><textarea rows="2" value={f.notes} onChange={set('notes')} /></div>}
       {err && <div className="err">{err}</div>}
+      {asking && (
+        <ReasonPrompt
+          what={asking.map((n) => (n.field === 'priority'
+            ? `${t('priority')} ← ${levels.find((l) => l.id === n.to)?.name || '—'}`
+            : `${t('status')} ← ${t(n.to)}`)).join(' · ')}
+          count={1}
+          onClose={() => setAsking(null)}
+          onConfirm={async (note) => { setAsking(null); await save(note) }}
+        />
+      )}
     </Modal>
   )
 }

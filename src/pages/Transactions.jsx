@@ -19,6 +19,8 @@ import { TX } from '../domain/constants'
 import ReceiptPreview from '../components/ReceiptPreview'
 import ApprovalQueue from '../components/ApprovalQueue'
 import DetailPanel from '../components/DetailPanel'
+import IncomeReceiptPrint from '../components/IncomeReceiptPrint'
+import { createPortal } from 'react-dom'
 import SortControls from '../components/SortControls'
 
 export default function Transactions() {
@@ -40,6 +42,40 @@ export default function Transactions() {
   const [preview, setPreview] = useState(null)   // { path, number }
   const [decidingId, setDecidingId] = useState(null)
   const [detail, setDetail] = useState(null)
+
+  /**
+   * Print a figure, or *** when this row's amounts are marked private and the
+   * reader is not a mentor.
+   *
+   * The masking is a DISPLAY rule. `r.amount` stays real in the data, which
+   * is deliberate and is why every total, chart and balance on this page is
+   * still exactly right for a student — only the row stops announcing it.
+   * `amount_display` is the view's copy, null when it should be hidden.
+   */
+  /**
+   * The income whose payment summary is being printed.
+   *
+   * Rendered into document.body rather than into the page, so the print
+   * stylesheet can hide the whole app and leave the document alone on the
+   * paper. Printing the screen with its controls hidden was tried for the
+   * simulation and produced a page of filter chips.
+   */
+  const [receiptFor, setReceiptFor] = useState(null)
+  useEffect(() => {
+    if (!receiptFor) return
+    document.body.classList.add('printing-receipt')
+    // Clear up after the dialog closes either way — Chrome fires afterprint
+    // on cancel too, so a cancelled print does not leave the app hidden.
+    const done = () => { document.body.classList.remove('printing-receipt'); setReceiptFor(null) }
+    window.addEventListener('afterprint', done, { once: true })
+    const id = setTimeout(() => window.print(), 50)
+    return () => { clearTimeout(id); window.removeEventListener('afterprint', done); document.body.classList.remove('printing-receipt') }
+  }, [receiptFor])
+
+  const masked = (r) => r?.amounts_private && !isMentor
+  const amountCell = (r, value) => (masked(r)
+    ? <span style={{ color: 'var(--text-faint)', letterSpacing: '.15em' }}>***</span>
+    : money(value))
 
   const [q, setQ] = useState('')
   // Arriving from a budget's "view expenses" link. Read once, from the URL, so
@@ -407,6 +443,7 @@ export default function Transactions() {
                       amount is a placeholder 1, so printing it as ₪1.00 stated
                       a value that was never received. */}
                   {r.type === TX.IN_KIND ? <span style={{ color: 'var(--text-faint)' }}>—</span> : (() => {
+                    if (masked(r)) return amountCell(r)
                     const part = scopeAmount(r)
                     if (ts.all || part === Number(r.amount)) return money(r.amount)
                     return (<>
@@ -482,17 +519,29 @@ export default function Transactions() {
 
       {isMentor && <ApprovalQueue rows={pendingRows} onDecide={decide} busyId={decidingId} />}
 
+      {receiptFor && createPortal(
+        <IncomeReceiptPrint
+          tx={receiptFor}
+          lines={txLines[receiptFor.id] || []}
+          seasonName={active?.name}
+          payerName={receiptFor.payer_name || receiptFor.payer_display}
+        />, document.body)}
       {detail && (
         <DetailPanel
           title={detail.description || detail.vendor || t('transaction')}
           onClose={() => setDetail(null)}
           canEdit={canTransact}
           onEdit={() => { setEditing(detail); setDetail(null); setShowForm(true) }}
+          extraActions={detail.type === TX.INCOME && isMentor && (
+            <button className="btn" onClick={() => setReceiptFor(detail)}>
+              {t('createReceipt')}
+            </button>
+          )}
           rows={[
             { label: t('date'), value: fmtDate(detail.date), mono: true },
             { label: t('type'), value: t(detail.type) },
             { label: t('teamScope'), value: <TeamScopeBadge scope={detail.team_scope} /> },
-            { label: t('amount'), value: detail.type === TX.IN_KIND ? '—' : money(detail.amount), mono: true },
+            { label: t('amount'), value: detail.type === TX.IN_KIND ? '—' : amountCell(detail, detail.amount), mono: true },
             { label: t('account'), value: detail.accountName },
             { label: t('vendor'), value: detail.vendor },
             { label: t('source'), value: detail.sourceName },
@@ -530,7 +579,7 @@ export default function Transactions() {
                           for", and the answer belongs beside its own amount. */}
                       <td>{lk.categoryName[l.category_id] || budgetLabel(l.budget_id) || '—'}</td>
                       <td><TeamScopeBadge scope={l.team_scope} /></td>
-                      <td className="num mono">{money(l.amount)}</td>
+                      <td className="num mono">{amountCell(detail, l.amount)}</td>
                     </tr>
                   ))}
                 </tbody>

@@ -1162,6 +1162,10 @@ table.data td.desc-cell { min-width: 12rem; }
 @media print {
   .receipt-print { display: block; font-size: 11pt; color: #000; }
 
+  /* The page's own lavender background printed behind the whole sheet. A
+     document handed to a parent is white. */
+  body.printing-receipt { background: #fff; }
+
   .receipt-head { border-bottom: 2px solid #0522d6; padding-bottom: 8px; margin-bottom: 16px; }
   .receipt-team { font-size: 8pt; letter-spacing: .1em; color: #666; }
   .receipt-print h1 { font-size: 17pt; margin: 2px 0; }
@@ -1172,7 +1176,11 @@ table.data td.desc-cell { min-width: 12rem; }
     border-bottom: 1px solid #ddd; padding: 7px 8px; text-align: start;
   }
   .receipt-table th { font-size: 9pt; color: #444; border-bottom: 1px solid #999; }
-  .receipt-table .num { text-align: end; }
+  /* An LTR island. A number is written left to right even inside a Hebrew
+     page, and without isolating it the minus sign of a discount is reordered
+     to the far side — "150.00-" instead of "-150.00". The same bidi trap as
+     the arrows on the dashboard. */
+  .receipt-table .num { text-align: end; direction: ltr; unicode-bidi: isolate; }
   .receipt-table .mono { font-family: ui-monospace, monospace; }
 
   /* A discount is a negative line. Reading it as "minus eighty" rather than
@@ -1223,4 +1231,12 @@ table.data td.desc-cell { min-width: 12rem; }
   font-size: 10px; font-weight: 700; text-transform: uppercase;
   letter-spacing: .04em; color: var(--text-faint);
   margin-inline-end: 5px;
+}
+
+/* While a payment summary is printing, the app is not on the paper at all.
+   Hiding its controls one by one is how the simulation's first print came out
+   as a page of filter chips. */
+@media print {
+  body.printing-receipt .app { display: none !important; }
+  body.printing-receipt .receipt-print { display: block !important; }
 }

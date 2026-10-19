@@ -10,7 +10,7 @@ import { useI18n } from '../lib/i18n'
  * way to look at the detail. This shows the same information with nothing to
  * type into, and offers the edit button to whoever is allowed to use it.
  */
-export default function DetailPanel({ title, rows, onClose, onEdit, canEdit, footer }) {
+export default function DetailPanel({ title, rows, onClose, onEdit, canEdit, footer, extraActions }) {
   const { t } = useI18n()
   return (
     // confirmClose={false}: there is nothing to lose here. Asking "discard
@@ -20,6 +20,10 @@ export default function DetailPanel({ title, rows, onClose, onEdit, canEdit, foo
     <Modal title={title} onClose={onClose} confirmClose={false} footer={
       <>
         <button className="btn btn-ghost" onClick={onClose}>{t('close')}</button>
+        {/* Anything this particular kind of row can do — producing a payment
+            summary, for one. Beside Close rather than inside the body, so it
+            reads as an action on the record and not as part of it. */}
+        {extraActions}
         {canEdit && onEdit && (
           <button className="btn btn-primary" onClick={onEdit}>{t('edit')}</button>
         )}

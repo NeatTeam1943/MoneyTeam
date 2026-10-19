@@ -7,6 +7,11 @@ import { useAuth } from '../context/AuthContext'
 import { money } from '../lib/format'
 import Modal from './Modal'
 import CurrencyAmountInput from './CurrencyAmountInput'
+import IncomeLines, { emptyIncomeLine, incomeLinesTotal } from './IncomeLines'
+
+/** Offered as suggestions, not as a closed list — the field stays free text,
+ *  because the next parent will pay by something nobody thought of. */
+const PAYMENT_METHODS = ['מזומן', 'העברה בנקאית', 'ביט', 'צ׳ק', 'כרטיס אשראי', 'פייבוקס']
 import { TeamScopePicker } from './TeamScope'
 import { resolveBudget } from '../domain/budgetResolver'
 import { useLookups } from '../lib/useLookups'
@@ -44,6 +49,11 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
   }))
   // expense lines: [{ budget_id, amount, description, shopping_item_id }]
   const [lines, setLines] = useState(() => seed.lines?.length ? seed.lines.map(normLine) : [emptyLine()])
+  // Income breakdown — a separate list from the expense `lines` above, because
+  // the two carry different fields and sharing one array meant one of them
+  // always had columns it could not use.
+  const [incLines, setIncLines] = useState(() => [emptyIncomeLine(seed.account_id || '')])
+  const [privateAmounts, setPrivateAmounts] = useState(() => !!seed.amounts_private)
   const [files, setFiles] = useState([])
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
@@ -63,10 +73,21 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
         else setLines([{ budget_id: editing.budget_id || '', amount: editing.amount || '', description: '', shopping_item_id: '' }])
       })
     }
+    if (editing && editing.type === 'income') {
+      supabase.from('transaction_lines').select('*').eq('transaction_id', editing.id).then(({ data }) => {
+        // An income saved before breakdowns existed has no lines. Seeding one
+        // from the header keeps the form editable instead of showing an empty
+        // list that would wipe the amount on save.
+        if (data?.length) setIncLines(data)
+        else setIncLines([{ description: editing.description || '', unit_price: editing.amount || '',
+          quantity: 1, payment_method: '', account_id: editing.account_id || '' }])
+      })
+    }
   }, [editing])
 
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value })
   const isExpense = f.type === 'expense'
+  const isIncome = f.type === 'income'
   const showTo = f.type === 'transfer'
   const showSource = f.type === 'income' || f.type === 'in_kind'
 
@@ -189,6 +210,75 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
     } catch (e) { setErr(e.message || String(e)) } finally { setBusy(false) }
   }
 
+  /**
+   * An income, with its breakdown.
+   *
+   * Written as header-then-lines rather than through an RPC because that is
+   * how income has always been written, and the database now keeps the two in
+   * step itself: a trigger recomputes the header amount from the lines
+   * (migration 53), so a half-finished write cannot leave a header claiming a
+   * number its lines do not add up to.
+   */
+  async function saveIncome() {
+    const clean = incLines.filter((l) => String(l.unit_price ?? '').trim() !== '' || Number(l.amount))
+    if (!clean.length) { setErr(t('needOneLine')); return }
+    if (clean.some((l) => !l.account_id)) { setErr(t('requiredField') + ': ' + t('account')); return }
+    const total = incomeLinesTotal(clean)
+    // A discount can take a payment down, never to nothing: an "income" that
+    // nets to zero or less is not one. The database enforces this too; the
+    // check here exists so the message is in Hebrew and arrives before the
+    // round trip.
+    if (!(total > 0)) { setErr(t('netMustBePositive')); return }
+    if (!f.income_source_id) { setErr(t('requiredField') + ': ' + t('source')); return }
+    setErr(''); setBusy(true)
+    try {
+      const payload = {
+        season_id: seasonId,
+        type: 'income',
+        date: f.date,
+        amount: total,
+        // The header still needs ONE account — the table's own shape
+        // constraint requires it for an income. The first line's is the
+        // honest answer: it is where the bulk of a split usually lands, and
+        // the per-line accounts are what the balances actually read.
+        account_id: clean[0].account_id,
+        income_source_id: f.income_source_id,
+        description: f.description || null,
+        payer_name: f.payer_name || null,
+        notes: f.notes || null,
+        team_scope: f.team_scope || 'both',
+        amounts_private: isMentor ? privateAmounts : false,
+      }
+      // Only the id is needed back, so only the id is asked for.
+      const res = editing
+        ? await supabase.from('transactions').update(payload).eq('id', editing.id).select('id').single()
+        : await supabase.from('transactions').insert(payload).select('id').single()
+      if (res.error) throw res.error
+      const txId = res.data.id
+
+      // Replace the breakdown wholesale, the way save_expense does. The net
+      // check is deferred to the end of the transaction, so the moment where
+      // no lines exist is not a violation.
+      if (editing) {
+        const del = await supabase.from('transaction_lines').delete().eq('transaction_id', txId)
+        if (del.error) throw del.error
+      }
+      const ins = await supabase.from('transaction_lines').insert(clean.map((l) => ({
+        transaction_id: txId,
+        amount: Number(l.amount != null && l.amount !== '' ? l.amount
+          : (Number(l.unit_price) || 0) * (l.quantity == null ? 1 : Number(l.quantity) || 0)),
+        unit_price: l.unit_price === '' || l.unit_price == null ? null : Number(l.unit_price),
+        quantity: l.quantity == null || l.quantity === '' ? 1 : Number(l.quantity),
+        payment_method: l.payment_method || null,
+        account_id: l.account_id,
+        description: l.description || null,
+        team_scope: f.team_scope || 'both',
+      })))
+      if (ins.error) throw ins.error
+      onSaved({ id: txId })
+    } catch (e) { setErr(e.message || String(e)) } finally { setBusy(false) }
+  }
+
   async function saveOther() {
     if (!(Number(f.amount) > 0) && f.type !== 'in_kind') { setErr(t('requiredField') + ': ' + t('amount')); return }
     if (f.type !== 'in_kind' && !f.account_id) { setErr(t('requiredField') + ': ' + (showTo ? t('fromAccount') : t('account'))); return }
@@ -216,14 +306,14 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
         fx_rate: fx?.rate ? Number(fx.rate) : null,
       }
       const res = editing
-        ? await supabase.from('transactions').update(payload).eq('id', editing.id).select().single()
-        : await supabase.from('transactions').insert(payload).select().single()
+        ? await supabase.from('transactions').update(payload).eq('id', editing.id).select('id').single()
+        : await supabase.from('transactions').insert(payload).select('id').single()
       if (res.error) throw res.error
       onSaved(res.data)
     } catch (e) { setErr(e.message || String(e)) } finally { setBusy(false) }
   }
 
-  const save = () => (isExpense ? saveExpense() : saveOther())
+  const save = () => (isExpense ? saveExpense() : isIncome ? saveIncome() : saveOther())
 
   return (
     <Modal
@@ -269,15 +359,41 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
 
       <div className="grid-2">
         <div className="field"><label>{t('date')}</label><DateField value={f.date} onChange={set('date')} /></div>
-        {f.type !== 'in_kind' && !isExpense && (
+        {f.type !== 'in_kind' && !isExpense && !isIncome && (
           <div className="field"><label>{t('amount')} (₪)</label>
             <CurrencyAmountInput value={f.amount} onChange={(v) => setF({ ...f, amount: v })} fx={fx} onFxChange={setFx} placeholder={t('amount')} />
           </div>
         )}
       </div>
 
-      {/* account (from) — for expense, income, transfer */}
-      {f.type !== 'in_kind' && (
+      {/* INCOME: the breakdown replaces both the single amount and the single
+          account — a registration can be several items and land in two
+          accounts while remaining one payment and one receipt. */}
+      {isIncome && (
+        <>
+          <IncomeLines
+            lines={incLines}
+            accounts={accounts}
+            methods={PAYMENT_METHODS}
+            onChange={setIncLines}
+          />
+          {isMentor && (
+            <div className="field">
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <input type="checkbox" style={{ width: 'auto' }}
+                  checked={privateAmounts} onChange={(e) => setPrivateAmounts(e.target.checked)} />
+                {t('amountsPrivate')}
+              </label>
+              <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 2 }}>
+                {t('amountsPrivateHint')}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* account (from) — for expense and transfer; income carries it per line */}
+      {f.type !== 'in_kind' && !isIncome && (
         <div className="field">
           <label>{showTo ? t('fromAccount') : t('account')}</label>
           <select value={f.account_id} onChange={set('account_id')}>

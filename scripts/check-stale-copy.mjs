@@ -276,6 +276,47 @@ if (sql) {
   }
 }
 
-bad += inlineSize + lockLeak + unguardedPayer + unbranched + bareUid + statusCopy + undef + ruleDrift
+
+// A handler that takes arguments, wired straight to an event prop.
+//
+// React calls it with the click EVENT as the first argument. So
+//   async function save(note) { ... }   <button onClick={save}>
+// runs with `note` set to a SyntheticEvent — which is truthy, so a
+// `if (!note)` guard silently passes, and anything that stores `note` stores
+// an HTMLButtonElement. That shipped once: it skipped the "why?" prompt
+// entirely AND then failed with "Converting circular structure to JSON".
+// Nothing caught it — not the build, not the lint, not any check here.
+const EVENT_PROPS = /\bon(Click|Change|Submit|Blur|Focus|Input|KeyDown|KeyUp)=\{([A-Za-z_$][\w$]*)\}/g
+let handlerArgs = 0
+for (const f of walk('src')) {
+  const text = src(f)
+  // Comments describe the bug; they are not the bug. The fix for this very
+  // check's first finding is explained in a comment containing the broken
+  // form, and it flagged itself.
+  const lines = text.replace(/\/\*[\s\S]*?\*\//g, (c) => c.replace(/[^\n]/g, ' ')).split('\n')
+  for (let i = 0; i < lines.length; i++) {
+    const code = lines[i].replace(/\/\/.*$/, '').replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+    for (const m of code.matchAll(EVENT_PROPS)) {
+      const name = m[2]
+      // Does that name name a function that declares a parameter?
+      const decl = new RegExp(
+        `(?:async\\s+)?function\\s+${name}\\s*\\(\\s*([A-Za-z_$][\\w$]*)`
+        + `|const\\s+${name}\\s*=\\s*(?:async\\s*)?\\(\\s*([A-Za-z_$][\\w$]*)`)
+      const d = text.match(decl)
+      if (!d) continue
+      const firstParam = d[1] || d[2]
+      // A handler whose first parameter IS the event is correct and common —
+      // `async function submit(e)` wired to onSubmit does the preventDefault.
+      // Flagging those made the check fire on correct code, which gets a check
+      // ignored. Only a parameter that means something ELSE is the bug.
+      if (/^_?(e|ev|evt|event)$/.test(firstParam)) continue
+      handlerArgs++
+      console.log(`  HANDLER WITH A PARAMETER PASSED DIRECTLY in ${f}:${i + 1} (${name})`)
+      console.log(`         React passes the event as its first argument — use onX={() => ${name}()}`)
+    }
+  }
+}
+
+bad += inlineSize + lockLeak + unguardedPayer + unbranched + bareUid + statusCopy + undef + ruleDrift + handlerArgs
 console.log(bad ? `\n  ${bad} problem(s)` : '  no stale strings')
 process.exit(bad ? 1 : 0)

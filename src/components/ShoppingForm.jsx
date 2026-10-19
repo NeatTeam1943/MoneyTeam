@@ -78,7 +78,11 @@ export default function ShoppingForm({ editing, seasonId, categoryTree, vendorsA
     return out
   }
 
-  async function save(note) {
+  async function save(rawNote) {
+    // Only a real, non-empty string counts as a reason. Belt and braces after
+    // the click event got in here once: anything else is treated as "no reason
+    // given", which means the prompt opens instead of a bad value being saved.
+    const note = typeof rawNote === 'string' && rawNote.trim() ? rawNote.trim() : null
     if (!f.name.trim()) { setErr(t('requiredField') + ': ' + t('name')); return }
     if (!f.sku.trim()) { setErr(t('requiredField') + ': ' + t('sku')); return }
     if (!f.category_id) { setErr(t('requiredField') + ': ' + t('category')); return }
@@ -160,7 +164,11 @@ export default function ShoppingForm({ editing, seasonId, categoryTree, vendorsA
       onClose={onClose}
       footer={<>
         <button className="btn btn-ghost" onClick={onClose}>{t('cancel')}</button>
-        <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? '…' : t('save')}</button>
+        {/* `onClick={save}` passed React's click event as the first argument, so
+            `note` was an HTMLButtonElement: the reason prompt was skipped because
+            an event object is truthy, and the save then tried to store the event
+            as the reason. Called with no arguments, deliberately. */}
+        <button className="btn btn-primary" onClick={() => save()} disabled={busy}>{busy ? '…' : t('save')}</button>
       </>}
     >
       {templates.length > 0 && (

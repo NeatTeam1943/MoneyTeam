@@ -592,7 +592,19 @@ export default function Transactions() {
                       <td>{l.description || '—'}</td>
                       {/* On the row itself: the question is "what was this line
                           for", and the answer belongs beside its own amount. */}
-                      <td>{lk.categoryName[l.category_id] || budgetLabel(l.budget_id) || '—'}</td>
+                      {/* budgetLabel is a LOOKUP OBJECT, not a function — see where
+                          it is built above, and where it is read correctly a few
+                          lines further up. Written as budgetLabel(...) this threw
+                          "is not a function" and took the whole page down.
+                          It never fired before because an expense line always has
+                          a category, so the first half of the `||` always won and
+                          the broken half was never reached. Income lines carry no
+                          category, so opening one ran it for the first time.
+                          For those, the account is the useful answer anyway. */}
+                      <td>{lk.categoryName[l.category_id]
+                        || budgetLabel[l.budget_id]
+                        || lk.accountName[l.account_id]
+                        || '—'}</td>
                       <td><TeamScopeBadge scope={l.team_scope} /></td>
                       <td className="num mono">{amountCell(detail, l.amount)}</td>
                     </tr>

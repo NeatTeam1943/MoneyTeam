@@ -317,6 +317,38 @@ for (const f of walk('src')) {
   }
 }
 
-bad += inlineSize + lockLeak + unguardedPayer + unbranched + bareUid + statusCopy + undef + ruleDrift + handlerArgs
+
+// A lookup OBJECT called as if it were a function.
+//
+// This file is full of name maps — categoryName, accountName, budgetLabel,
+// levelName — built with Object.fromEntries and read with brackets. Writing
+// `budgetLabel(id)` instead of `budgetLabel[id]` is a TypeError that takes
+// the page down, and nothing catches it: the name is defined, so the linter
+// is happy, and the build has no types to check it against.
+//
+// It shipped. It survived because it sat behind a `||` whose left side was
+// always truthy, and fired the first time a row reached the right side.
+const LOOKUP_DECL = /const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:useMemo\(\s*\(\)\s*=>\s*)?Object\.fromEntries\(/g
+let calledMaps = 0
+for (const f of walk('src')) {
+  const text = src(f)
+  const names = [...text.matchAll(LOOKUP_DECL)].map((m) => m[1])
+  if (!names.length) continue
+  const lines = text.replace(/\/\*[\s\S]*?\*\//g, (c) => c.replace(/[^\n]/g, ' ')).split('\n')
+  for (let i = 0; i < lines.length; i++) {
+    const code = lines[i].replace(/\/\/.*$/, '')
+    for (const n of names) {
+      // `name(` — but not `name` followed by a bracket, and not its own
+      // declaration line.
+      if (!new RegExp(`(?<![\\w$.])${n}\\s*\\(`).test(code)) continue
+      if (new RegExp(`const\\s+${n}\\s*=`).test(code)) continue
+      calledMaps++
+      console.log(`  LOOKUP OBJECT CALLED AS A FUNCTION in ${f}:${i + 1} (${n})`)
+      console.log(`         it is built with Object.fromEntries — read it as ${n}[key]`)
+    }
+  }
+}
+
+bad += inlineSize + lockLeak + unguardedPayer + unbranched + bareUid + statusCopy + undef + ruleDrift + handlerArgs + calledMaps
 console.log(bad ? `\n  ${bad} problem(s)` : '  no stale strings')
 process.exit(bad ? 1 : 0)

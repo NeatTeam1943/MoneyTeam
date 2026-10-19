@@ -677,8 +677,19 @@ export default function Shopping() {
                     {canSelect && <td><input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleSel(r.id)} style={{ width: 'auto' }} title={canBuy ? '' : t('notBuyable')} /></td>}
                     <td>
                       {canChangeStatus ? (
+                        // Carries the level's colour, like the badge a student
+                        // sees. Making this editable had quietly taken the
+                        // colour away from exactly the people who triage by
+                        // it — the tint IS how you read the column at a
+                        // glance, and a row of identical grey boxes is not a
+                        // fair trade for being able to change it in place.
                         <select value={r.priority_level_id || ''} onChange={(e) => changePriority(r.id, e.target.value)}
-                          style={{ width: 'auto', padding: '4px 8px', fontSize: 13 }}>
+                          className="priority-select"
+                          style={lvl ? {
+                            background: (lvl.color || '#8a8aa0') + '22',
+                            borderColor: (lvl.color || '#8a8aa0') + '66',
+                            color: lvl.color || 'var(--text)',
+                          } : undefined}>
                           <option value="">—</option>
                           {lk.levels.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
                         </select>

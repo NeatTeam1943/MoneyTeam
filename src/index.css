@@ -1263,3 +1263,15 @@ table.data td.desc-cell { min-width: 12rem; }
   body.printing-receipt > *:not(.receipt-print) { display: none !important; }
   body.printing-receipt .receipt-print { display: block !important; }
 }
+
+/* The inline priority picker, tinted with its own level's colour.
+   The colours themselves come from the level rows, so they are set inline;
+   this carries only the shape — compact, and bold enough that the tint reads
+   as a label rather than as a disabled field. */
+.priority-select {
+  width: auto; padding: 4px 8px; font-size: 13px; font-weight: 600;
+  border-radius: 999px;
+}
+/* The list the browser drops down is its own surface, so a row tinted for the
+   closed control would be unreadable there. */
+.priority-select option { background: var(--field); color: var(--text); font-weight: 400; }

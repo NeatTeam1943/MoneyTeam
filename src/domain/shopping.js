@@ -126,3 +126,21 @@ export function estimateByCategory(rows, labelOf) {
   }
   return m
 }
+
+/**
+ * Does this note still describe the row as it is now?
+ *
+ * A note records the value the item was moved TO. While the item is still at
+ * that value, the note explains the state it is in, so it belongs on the row.
+ * Once it moves on, the note explains something that is no longer true — it
+ * goes to the item's history and off the list.
+ *
+ * `notes` must be newest-first; the first match for a field wins.
+ */
+export function currentNoteFor(row, notes, field) {
+  if (!row || !notes) return null
+  const n = notes.find((x) => x.item_id === row.id && x.field === field)
+  if (!n) return null
+  const now = field === 'status' ? row.status : (row.priority_level_id || null)
+  return (n.to_value || null) === (now || null) ? n : null
+}

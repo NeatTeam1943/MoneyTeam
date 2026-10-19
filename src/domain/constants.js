@@ -115,6 +115,34 @@ export const MENTOR_DECIDED_STATUSES = Object.freeze([
   SHOPPING_STATUS.RECEIVED,
 ])
 
+/** How far along the chain a status sits.
+ *
+ *  Used for one question only: does this change move the request FORWARD?
+ *  A move that does not — cancelling it, sending it back for more detail,
+ *  parking it on a sponsor — is a decision the person who raised it deserves
+ *  an explanation for, so it asks for one.
+ *
+ *  `waiting_sponsor` shares rank 1 with `waiting_finance` on purpose: it is a
+ *  different queue at the same stage, not progress, so moving an item there
+ *  from anywhere asks for a reason. `wish` and `cancelled` sit at 0, so
+ *  REVIVING a cancelled row is forward motion and asks for nothing. */
+const STATUS_RANK = Object.freeze({
+  [SHOPPING_STATUS.CANCELLED]: 0,
+  [SHOPPING_STATUS.WISH]: 0,
+  [SHOPPING_STATUS.WAITING_FINANCE]: 1,
+  [SHOPPING_STATUS.WAITING_SPONSOR]: 1,
+  [SHOPPING_STATUS.PENDING]: 2,
+  [SHOPPING_STATUS.APPROVED]: 3,
+  [SHOPPING_STATUS.ORDERED]: 4,
+  [SHOPPING_STATUS.RECEIVED]: 5,
+})
+
+/** True when moving from -> to should ask why. */
+export function statusChangeNeedsReason(from, to) {
+  if (!from || from === to) return false
+  return (STATUS_RANK[to] ?? 0) <= (STATUS_RANK[from] ?? 0)
+}
+
 /** Which statuses this person may move the given row into — the single answer
  *  used by the row dropdown, the form and the bulk action, so the three cannot
  *  disagree. An empty list means the row is not theirs to move. */

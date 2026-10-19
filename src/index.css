@@ -118,6 +118,18 @@ label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 
 .sidebar {
   border-inline-end: 1px solid var(--line); background: rgba(255, 255, 255, 0.72);
   backdrop-filter: blur(6px); padding: 20px 14px; display: flex; flex-direction: column; gap: 4px;
+  /* The nav stays put while the page scrolls under it.
+     Without this the sidebar was an ordinary grid column: it scrolled away
+     with the content, and on a long page — the shopping list, the reports —
+     you had to scroll all the way back to the top to reach another page,
+     past a tall strip of empty background where the links used to be.
+     `align-self: start` is the part that makes it work: a grid item stretches
+     by default, so the box was already the full height of the content and a
+     sticky element cannot move inside a box that tall. */
+  position: sticky; top: 0; align-self: start;
+  /* Its own height and its own scrollbar, so a nav longer than the screen is
+     still reachable rather than clipped. */
+  height: 100vh; overflow-y: auto; overscroll-behavior: contain;
 }
 .brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 18px; }
 .brand .tick { width: 10px; height: 26px; background: var(--orange); border-radius: 2px; }
@@ -511,6 +523,10 @@ html, body { max-width: 100%; overflow-x: hidden; }
        — dragged the whole band taller, and the band changed height on every
        page change depending on which link was active. */
     align-items: center;
+    /* Undo the desktop rules above: collapsed to one column this is a ROW
+       across the top, so it takes its own height and does not scroll
+       vertically. Left as `start` it would shrink to nothing. */
+    align-self: stretch; overflow-y: visible;
     height: auto; min-height: 0;
     gap: 4px; padding: 6px 0;
     scroll-padding-inline: 8px;
@@ -1134,4 +1150,77 @@ table.data td.desc-cell { min-width: 12rem; }
   .outlook-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
   .outlook-arrow { display: none; }
   .outlook-final { grid-column: 1 / -1; }
+}
+
+/* ---------- Printed payment summary (one income) ---------- */
+/* Hidden on screen, like the printed simulation: this is a document handed to
+   a parent, not a view with controls. Hebrew needs nothing special here —
+   the browser lays out the RTL run itself, which is the whole reason this is
+   printed rather than drawn into a PDF by a library. */
+.receipt-print { display: none; }
+
+@media print {
+  .receipt-print { display: block; font-size: 11pt; color: #000; }
+
+  .receipt-head { border-bottom: 2px solid #0522d6; padding-bottom: 8px; margin-bottom: 16px; }
+  .receipt-team { font-size: 8pt; letter-spacing: .1em; color: #666; }
+  .receipt-print h1 { font-size: 17pt; margin: 2px 0; }
+  .receipt-meta { font-size: 9pt; color: #666; }
+
+  .receipt-table { width: 100%; border-collapse: collapse; }
+  .receipt-table th, .receipt-table td {
+    border-bottom: 1px solid #ddd; padding: 7px 8px; text-align: start;
+  }
+  .receipt-table th { font-size: 9pt; color: #444; border-bottom: 1px solid #999; }
+  .receipt-table .num { text-align: end; }
+  .receipt-table .mono { font-family: ui-monospace, monospace; }
+
+  /* A discount is a negative line. Reading it as "minus eighty" rather than
+     as another charge is the difference between a parent trusting the sheet
+     and ringing up about it, so it is marked rather than left to the sign. */
+  .receipt-discount td { color: #0a7a3d; }
+
+  .receipt-table tfoot td {
+    border-top: 2px solid #000; border-bottom: none;
+    font-weight: 700; font-size: 12pt; padding-top: 9px;
+  }
+
+  .receipt-notes { margin-top: 14px; font-size: 9pt; color: #444; white-space: pre-wrap; }
+}
+
+/* ---------- Income breakdown rows ---------- */
+/* Its own grid rather than .line-row: an income line carries a different set
+   of fields (price, quantity, method, account) and borrowing the expense
+   layout left the widths fighting each other. */
+.income-line {
+  display: grid; gap: 6px; align-items: center; margin-bottom: 6px;
+  grid-template-columns: minmax(0, 2fr) 7rem 4.5rem minmax(0, 1fr) minmax(0, 1fr) 6rem auto;
+}
+.income-line .il-total { text-align: end; font-weight: 600; }
+/* A discount reads as money coming off, not as another charge. */
+.income-line .il-discount { color: var(--ok); }
+
+@media (max-width: 900px) {
+  /* Stacked in pairs on a phone. Six controls on one row at 390px gives each
+     of them about 50px, which is not a field, it is a hint of one. */
+  .income-line {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    padding-bottom: 8px; border-bottom: 1px solid var(--line);
+  }
+  .income-line .il-desc { grid-column: 1 / -1; }
+  .income-line .il-total { grid-column: 1 / 3; text-align: start; }
+}
+
+/* A reason shown against the row it still applies to. Muted and clamped to one
+   line: it is context for the row above it, not a second row of its own. The
+   full text is in the title attribute and in the item's history. */
+.row-reason {
+  font-size: 12px; color: var(--text-dim); margin-top: 3px;
+  display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical;
+  overflow: hidden; overflow-wrap: anywhere;
+}
+.row-reason-tag {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .04em; color: var(--text-faint);
+  margin-inline-end: 5px;
 }

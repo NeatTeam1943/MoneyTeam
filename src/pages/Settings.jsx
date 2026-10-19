@@ -92,6 +92,10 @@ export default function Settings() {
         { key: 'name', label: t('name'), type: 'text', required: true },
         { key: 'rank', label: t('rank'), type: 'number', default: 0 },
         { key: 'color', label: t('color'), type: 'color' },
+        // Tick this on the levels that mean "needs work" rather than "urgent"
+        // — moving an item to one of them then asks why, and the answer is
+        // kept on the item.
+        { key: 'requires_reason', label: t('requiresReason'), type: 'checkbox', default: false },
       ],
     },
     members: {

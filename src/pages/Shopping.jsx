@@ -17,9 +17,10 @@ import { TeamScopeBadge } from '../components/TeamScope'
 import SortControls from '../components/SortControls'
 import MultiSelect from '../components/MultiSelect'
 import DetailPanel from '../components/DetailPanel'
-import { filterRows, sortRows } from '../domain/shopping'
+import { filterRows, sortRows, currentNoteFor } from '../domain/shopping'
 import { splitByExclusivity } from '../lib/teamScope'
-import { BUYABLE_STATUSES, DEFAULT_SHOPPING_STATUSES, OPEN_STATUSES, SELECTABLE_STATUSES, SHOPPING_STATUS, allowedStatusesFor } from '../domain/constants'
+import { BUYABLE_STATUSES, DEFAULT_SHOPPING_STATUSES, OPEN_STATUSES, SELECTABLE_STATUSES, SHOPPING_STATUS, allowedStatusesFor, statusChangeNeedsReason } from '../domain/constants'
+import ReasonPrompt from '../components/ReasonPrompt'
 
 // Axis labels and grid lines follow the theme too: #4c5570 on a dark panel is
 // 2.3:1 and #dde2ee grid lines glow. SVG resolves CSS variables the same way
@@ -62,6 +63,27 @@ export default function Shopping() {
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
   const [detail, setDetail] = useState(null)
+  // The pending change waiting on a reason: { field, ids, from, to, what }.
+  // Nothing is written until the note is given, so Cancel leaves the rows
+  // exactly as they were rather than changing them and losing the note.
+  const [asking, setAsking] = useState(null)
+  const [notes, setNotes] = useState([])
+
+  /**
+   * The reason that still APPLIES to a row, as opposed to its history.
+   *
+   * A note records what the value was changed TO. While the item is still at
+   * that value the note explains the state it is in now, so it belongs on the
+   * row where the person working through the list will see it. The moment the
+   * item moves on, the note stops describing anything current and drops out of
+   * the list — it is still on the item, under the history, which is where you
+   * go to ask "why did this bounce around".
+   *
+   * Status and priority are tracked separately: an item can be both parked for
+   * a reason AND marked WIP for a different one, and collapsing the two would
+   * show the wrong sentence next to one of them.
+   */
+  const noteFor = (row, field) => currentNoteFor(row, notes, field)
   const [editing, setEditing] = useState(null)
   const [showForm, setShowForm] = useState(false)
   const [selected, setSelected] = useState(() => new Set())
@@ -80,15 +102,21 @@ export default function Shopping() {
     if (!activeId) { setLoading(false); return }
     if (rows.length === 0) setLoading(true)   // only spinner when nothing is showing yet
     try {
-      const [items, bg, tl, mb] = await withTimeout(Promise.all([
+      const [items, bg, tl, mb, nt] = await withTimeout(Promise.all([
         supabase.from('shopping_items').select('*').eq('season_id', activeId),
         supabase.from('budgets').select('*').eq('season_id', activeId),
         supabase.from('ledger_lines_full').select('amount,budget_id,team_scope,category_id,season_id,tx_team_scope').eq('season_id', activeId),
         // Who raised each request. Any member may read this table, and the
         // id on a shopping row IS the auth uid, so the join is a lookup.
         supabase.from('members').select('id,full_name,email'),
+        // Every reason for this season's items, in one query rather than one
+        // per row. The list shows the CURRENT reason inline and the item shows
+        // the whole history, and both read this.
+        supabase.from('shopping_change_notes').select('*')
+          .order('created_at', { ascending: false }),
       ]))
       if (!items.error) setRows(items.data || [])
+      if (!nt.error) setNotes(nt.data || [])
       if (!bg.error) setBudgets(bg.data || [])
       if (!tl.error) setLines(tl.data || [])
       if (!mb.error) setMembers(mb.data || [])
@@ -274,10 +302,74 @@ export default function Shopping() {
     toast.success(t('duplicated')); load()
   }
 
-  async function changeStatus(id, status) {
-    const { error } = await supabase.from('shopping_items').update({ status }).eq('id', id)
-    if (error) { toast.error(error.message); return }
-    toast.success(t('saved')); load()
+  /**
+   * Apply a change to some rows and, when one was asked for, record why.
+   *
+   * The note is written AFTER the change succeeds. The other order would leave
+   * a reason on the record for something that never happened, which is worse
+   * than no reason: it reads as history.
+   */
+  async function apply({ field, ids, to, from, note }) {
+    const column = field === 'priority' ? 'priority_level_id' : 'status'
+    const { error } = await supabase.from('shopping_items')
+      .update({ [column]: to || null }).in('id', ids)
+    if (error) { toast.error(error.message); return false }
+    if (note) {
+      const { error: noteErr } = await supabase.from('shopping_change_notes').insert(
+        ids.map((item_id) => ({ item_id, field, from_value: from ?? null, to_value: to ?? null, note })))
+      // The change itself went through, so this is not a failure of the
+      // action — but a reason that silently vanished is exactly the thing
+      // this feature exists to prevent, so it is said out loud.
+      if (noteErr) toast.error(t('reasonNotSaved') + ': ' + noteErr.message)
+    }
+    toast.success(t('saved'))
+    return true
+  }
+
+  /** Make the change, or ask why first. `what` is the sentence shown in the box. */
+  async function change({ field, ids, from, to, what, needsReason }) {
+    if (!ids.length) return
+    if (needsReason) { setAsking({ field, ids, from, to, what }); return }
+    if (await apply({ field, ids, to, from })) load()
+  }
+
+  function changeStatus(id, status) {
+    const row = enriched.find((r) => r.id === id)
+    return change({
+      field: 'status', ids: [id], from: row?.status, to: status,
+      what: `${row?.name || ''} · ${t(row?.status || '')} ← ${t(status)}`,
+      needsReason: statusChangeNeedsReason(row?.status, status),
+    })
+  }
+
+  /** Inline priority change. Which levels demand a reason is a flag on the
+   *  level itself (migration 52) rather than a list of names in here — the
+   *  team renames and adds levels, and a name matched in code would break the
+   *  first time they did. */
+  function changePriority(id, levelId) {
+    const row = enriched.find((r) => r.id === id)
+    const lvl = lk.levels.find((l) => l.id === levelId)
+    return change({
+      field: 'priority', ids: [id], from: row?.priority_level_id, to: levelId,
+      what: `${row?.name || ''} · ${t('priority')} ← ${lvl?.name || '—'}`,
+      needsReason: !!lvl?.requires_reason,
+    })
+  }
+
+  /** Bulk priority, over every selected row. Unlike status there is no
+   *  per-row restriction to respect: anyone who may triage may re-prioritise
+   *  anything. */
+  function bulkPriority(levelId) {
+    const lvl = lk.levels.find((l) => l.id === levelId)
+    const ids = selectedItems.map((r) => r.id)
+    if (!ids.length) return
+    if (!lvl?.requires_reason
+      && !confirm(t('confirmBulkPriority').replace('{n}', ids.length).replace('{s}', lvl?.name || '—'))) return
+    return change({
+      field: 'priority', ids, from: null, to: levelId,
+      what: `${t('priority')} ← ${lvl?.name || '—'}`,
+      needsReason: !!lvl?.requires_reason,
+    })
   }
 
   // Bulk status change. The DB trigger guard_shopping_status already refuses
@@ -289,12 +381,16 @@ export default function Shopping() {
     // "change 6 items" and gets 4.
     const ids = bulkSettable.map((r) => r.id)
     if (!ids.length) return
-    if (!confirm(t('confirmBulkStatus').replace('{n}', ids.length).replace('{s}', t(status)))) return
-    const { error } = await supabase.from('shopping_items').update({ status }).in('id', ids)
-    if (error) { toast.error(error.message); return }
-    toast.success(t('saved'))
-    clearSelection()
-    load()
+    // A reason is needed if the move is backwards for ANY of the selected
+    // rows. They can be in different statuses, and asking once for the whole
+    // batch is the point of a bulk action.
+    const needsReason = bulkSettable.some((r) => statusChangeNeedsReason(r.status, status))
+    if (!needsReason && !confirm(t('confirmBulkStatus').replace('{n}', ids.length).replace('{s}', t(status)))) return
+    await change({
+      field: 'status', ids, from: null, to: status,
+      what: `${t('status')} ← ${t(status)}`, needsReason,
+    })
+    if (!needsReason) clearSelection()
   }
 
   function onBought() {
@@ -544,6 +640,12 @@ export default function Shopping() {
             {bulkTargets.map((st) => <option key={st} value={st}>{t(st)}</option>)}
           </select>
         )}
+        {canChangeStatus && selectedItems.length > 0 && lk.levels.length > 0 && (
+          <select value="" onChange={(e) => { if (e.target.value) bulkPriority(e.target.value) }}>
+            <option value="">{t('bulkSetPriority')} ({selectedItems.length})</option>
+            {lk.levels.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+          </select>
+        )}
         {canTransact && buyableItems.length > 0 && <button className="btn btn-primary" onClick={() => setBuyOpen(true)}>{t('buySelected')} ({buyableItems.length})</button>}
         <button className="btn" onClick={doExport}>{t('exportShopping')}</button>
         {canAddShopping && <button className="btn btn-primary" onClick={() => { setEditing(null); setShowForm(true) }}>+ {t('add')}</button>}
@@ -573,10 +675,36 @@ export default function Shopping() {
                 return (
                   <tr key={r.id} style={done ? { opacity: 0.5, background: 'var(--panel-2)' } : undefined}>
                     {canSelect && <td><input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleSel(r.id)} style={{ width: 'auto' }} title={canBuy ? '' : t('notBuyable')} /></td>}
-                    <td>{lvl ? <span className="pill" style={{ background: (lvl.color || '#8a8aa0') + '22', color: lvl.color || '#5b6472' }}>{lvl.name}</span> : '—'}</td>
+                    <td>
+                      {canChangeStatus ? (
+                        <select value={r.priority_level_id || ''} onChange={(e) => changePriority(r.id, e.target.value)}
+                          style={{ width: 'auto', padding: '4px 8px', fontSize: 13 }}>
+                          <option value="">—</option>
+                          {lk.levels.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                        </select>
+                      ) : (
+                        lvl ? <span className="pill" style={{ background: (lvl.color || '#8a8aa0') + '22', color: lvl.color || '#5b6472' }}>{lvl.name}</span> : '—'
+                      )}
+                    </td>
                     <td className="desc-cell">
                       <button type="button" className="link-cell clamp-2" title={r.name}
                         onClick={() => setDetail(r)}>{r.name}</button>
+                      {/* Why it is where it is. Under the name rather than in
+                          a column of its own: a reason is a sentence, and a
+                          sentence in a table column either wraps the row to
+                          three lines or gets cut to nothing. */}
+                      {['status', 'priority'].map((field) => {
+                        const n = noteFor(r, field)
+                        if (!n) return null
+                        return (
+                          <div key={field} className="row-reason" title={n.note}>
+                            <span className="row-reason-tag">
+                              {field === 'priority' ? t('priority') : t('status')}
+                            </span>
+                            {n.note}
+                          </div>
+                        )
+                      })}
                     </td>
                     <td><TeamScopeBadge scope={r.team_scope} /></td>
                     <td className="mono" style={{ color: 'var(--text-dim)' }}>{r.sku || '—'}</td>
@@ -666,6 +794,18 @@ export default function Shopping() {
           onClose={() => setBuyOpen(false)} onSaved={onBought}
         />
       )}
+      {asking && (
+        <ReasonPrompt
+          what={asking.what}
+          count={asking.ids.length}
+          onClose={() => setAsking(null)}
+          onConfirm={async (note) => {
+            const ok = await apply({ ...asking, note })
+            setAsking(null)
+            if (ok) { clearSelection(); load() }
+          }}
+        />
+      )}
       {detail && (
         <DetailPanel
           title={detail.name}
@@ -700,6 +840,29 @@ export default function Shopping() {
             },
             { label: t('notes'), value: detail.notes, style: { whiteSpace: 'pre-wrap' } },
           ]}
+          footer={(() => { const history = notes.filter((n) => n.item_id === detail.id); return history.length > 0 && (
+            // Why this item was sent back, cancelled or re-prioritised. It
+            // lives HERE rather than in the list: the list is for working
+            // through, and a column of explanations would push the rows that
+            // matter off the screen. Newest first, because the last thing that
+            // happened is the thing you opened this to find out.
+            <div style={{ marginTop: 16, borderTop: '1px solid var(--line)', paddingTop: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-dim)', marginBottom: 8 }}>
+                {t('changeHistory')}
+              </div>
+              {history.map((n) => (
+                <div key={n.id} style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-faint)' }}>
+                    {new Date(n.created_at).toLocaleDateString('he-IL')}
+                    {' · '}{n.field === 'priority' ? t('priority') : t('status')}
+                    {n.to_value ? ` ← ${n.field === 'status' ? t(n.to_value) : (lk.levelName?.[n.to_value] || '—')}` : ''}
+                    {memberName[n.created_by] ? ` · ${memberName[n.created_by]}` : ''}
+                  </div>
+                  <div style={{ whiteSpace: 'pre-wrap' }}>{n.note}</div>
+                </div>
+              ))}
+            </div>
+          ) })()}
         />
       )}
 

@@ -18,4 +18,21 @@ export const quantityOf = (row) => (row?.quantity == null ? 1 : Number(row.quant
 
 export const lineTotalOf = (row) => toNumber(row?.est_price) * quantityOf(row)
 
+/** What a transaction LINE is worth.
+ *
+ *  `amount` is authoritative — it is the column every balance, budget and
+ *  report sums, and the one the database constrains. `unit_price` and
+ *  `quantity` are how that number was arrived at, kept so a receipt can show
+ *  the multiplication rather than just its result.
+ *
+ *  Falling back to the multiplication matters for exactly one case: a line
+ *  written before those columns existed has neither, and every line written
+ *  since has `amount` set from them by the form, so the two never disagree.
+ *  A negative amount is a discount and is returned as-is, deliberately: the
+ *  old `Number(x) || 0` style would have turned it into nothing. */
+export const lineAmount = (line) => {
+  if (line?.amount != null && line.amount !== '') return toNumber(line.amount)
+  return toNumber(line?.unit_price) * quantityOf(line)
+}
+
 export const sumBy = (rows, pick) => (rows || []).reduce((acc, r) => acc + toNumber(pick(r)), 0)

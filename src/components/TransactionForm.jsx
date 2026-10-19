@@ -315,9 +315,11 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
 
   const save = () => (isExpense ? saveExpense() : isIncome ? saveIncome() : saveOther())
 
+  // Wide for income too: the breakdown needs the room, and a dialog capped at
+  // 520px is what made its fields unreadable regardless of screen size.
   return (
     <Modal
-      wide={isExpense}
+      wide={isExpense || isIncome}
       title={editing ? t('editTransaction') : t('addTransaction')}
       onClose={onClose}
       footer={<>

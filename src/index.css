@@ -1196,27 +1196,41 @@ table.data td.desc-cell { min-width: 12rem; }
   .receipt-notes { margin-top: 14px; font-size: 9pt; color: #444; white-space: pre-wrap; }
 }
 
-/* ---------- Income breakdown rows ---------- */
-/* Its own grid rather than .line-row: an income line carries a different set
-   of fields (price, quantity, method, account) and borrowing the expense
-   layout left the widths fighting each other. */
+/* ---------- Income breakdown ---------- */
+/* Each line is a block, and the grid is sized by the space it HAS rather than
+   by the width of the window. That distinction is the whole fix: this editor
+   lives inside a dialog capped at 520px, so a viewport-width media query left
+   six fields sharing 520px on any screen, and the payment-method box was too
+   narrow to read back what had been picked. */
 .income-line {
-  display: grid; gap: 6px; align-items: center; margin-bottom: 6px;
-  grid-template-columns: minmax(0, 2fr) 7rem 4.5rem minmax(0, 1fr) minmax(0, 1fr) 6rem auto;
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 10px 12px; margin-bottom: 8px;
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: var(--panel-2);
 }
-.income-line .il-total { text-align: end; font-weight: 600; }
+/* Description and account take the full width; they are a sentence and a
+   name, and both were the first to be truncated into uselessness. The three
+   short fields share a row of their own and GROW into it — an auto-fit grid
+   left them at their minimum with half the row empty beside them. */
+.il-mid { display: flex; gap: 10px; flex-wrap: wrap; }
+.il-mid .il-field { flex: 1 1 7rem; }
+.income-line .il-field { min-width: 0; }
+.income-line .il-field > span {
+  display: block; font-size: 11px; font-weight: 600;
+  color: var(--text-dim); margin-bottom: 3px;
+}
+.income-line .il-foot {
+  grid-column: 1 / -1; display: flex; align-items: center;
+  justify-content: space-between; gap: 10px;
+  border-top: 1px dashed var(--line); padding-top: 7px; margin-top: 2px;
+}
+.income-line .il-total { font-weight: 700; }
 /* A discount reads as money coming off, not as another charge. */
 .income-line .il-discount { color: var(--ok); }
 
-@media (max-width: 900px) {
-  /* Stacked in pairs on a phone. Six controls on one row at 390px gives each
-     of them about 50px, which is not a field, it is a hint of one. */
-  .income-line {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
-    padding-bottom: 8px; border-bottom: 1px solid var(--line);
-  }
-  .income-line .il-desc { grid-column: 1 / -1; }
-  .income-line .il-total { grid-column: 1 / 3; text-align: start; }
+.il-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; flex-wrap: wrap; margin-top: 6px;
 }
 
 /* A reason shown against the row it still applies to. Muted and clamped to one

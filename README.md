@@ -76,7 +76,7 @@ from any project subpath.
 2. Run the SQL migrations **in numeric order** in the SQL editor (see below).
 3. Create your auth user by signing in once, then insert a `members` row with
    your UID and role `mentor` — the bootstrap insert is at the bottom of
-   `01_foundation.sql`.
+   `sql/01_foundation.sql`.
 
 ### 2. Local
 

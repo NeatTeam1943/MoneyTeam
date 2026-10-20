@@ -20,6 +20,7 @@ import ReceiptPreview from '../components/ReceiptPreview'
 import ApprovalQueue from '../components/ApprovalQueue'
 import DetailPanel from '../components/DetailPanel'
 import IncomeReceiptPrint from '../components/IncomeReceiptPrint'
+import Modal from '../components/Modal'
 import { createPortal } from 'react-dom'
 import SortControls from '../components/SortControls'
 
@@ -39,6 +40,12 @@ export default function Transactions() {
   const [balances, setBalances] = useState([])
   const [editing, setEditing] = useState(null)
   const [showForm, setShowForm] = useState(false)
+  // "Create another": the values the next form starts from, and a counter that
+  // forces a fresh mount. The form reads its seed in useState initialisers, so
+  // changing the prop alone would leave the old values on screen — only a new
+  // key makes React build a new form from the new seed.
+  const [formSeed, setFormSeed] = useState(null)
+  const [formNonce, setFormNonce] = useState(0)
   const [preview, setPreview] = useState(null)   // { path, number }
   const [decidingId, setDecidingId] = useState(null)
   const [detail, setDetail] = useState(null)
@@ -61,6 +68,11 @@ export default function Transactions() {
    * simulation and produced a page of filter chips.
    */
   const [receiptFor, setReceiptFor] = useState(null)
+  // Who the invoice is made out to — the parent, typically, while "paid by"
+  // carries the student's name. Asked for rather than guessed: the two are
+  // different people and the sheet names both.
+  const [askingFor, setAskingFor] = useState(null)
+  const [addressee, setAddressee] = useState('')
   useEffect(() => {
     if (!receiptFor) return
     document.body.classList.add('printing-receipt')
@@ -69,7 +81,7 @@ export default function Transactions() {
     // every summary, so they are indistinguishable in a downloads folder.
     const prevTitle = document.title
     const who = receiptFor.payer_name || receiptFor.payer_display || t('unknownPayer')
-    document.title = `${t('paymentSummary')} - ${who}`
+    document.title = `${t('paymentInvoice')} ${who}`
     // Clear up after the dialog closes either way — Chrome fires afterprint
     // on cancel too, so a cancelled print does not leave the app hidden.
     const done = () => {
@@ -139,7 +151,12 @@ export default function Transactions() {
           : supabase.from('budgets').select('*').eq('season_id', activeId),
         isParent
           ? supabase.from('ledger_lines_guest').select('transaction_id,budget_id,amount,team_scope,category_id,season_id').eq('season_id', activeId)
-          : supabase.from('transaction_lines').select('transaction_id,budget_id,amount,team_scope,category_id,description,transactions!inner(season_id)').eq('transactions.season_id', activeId),
+          // The column list is explicit, so a column added later is simply
+          // absent — no error, just undefined. That is why a payment summary
+          // printed "—" for a method that had been filled in, a quantity of 1
+          // for a line of 3, and a unit price equal to the row total: the
+          // receipt was reading fields this query never asked for.
+          : supabase.from('transaction_lines').select('transaction_id,budget_id,amount,team_scope,category_id,description,account_id,unit_price,quantity,payment_method,transactions!inner(season_id)').eq('transactions.season_id', activeId),
       ]))
       if (!tx.error) setRows(tx.data || [])      // keep prior data if a query fails
       if (!bal.error) setBalances(bal.data || [])
@@ -423,7 +440,7 @@ export default function Transactions() {
           </button>
         )}
         {canPropose && (
-          <button className="btn btn-primary" onClick={() => { setEditing(null); setShowForm(true) }}>
+          <button className="btn btn-primary" onClick={() => { setEditing(null); setFormSeed(null); setShowForm(true) }}>
             + {isMentor ? t('add') : t('proposeExpense')}
           </button>
         )}
@@ -538,9 +555,29 @@ export default function Transactions() {
         <IncomeReceiptPrint
           tx={receiptFor}
           lines={txLines[receiptFor.id] || []}
-          seasonName={active?.name}
+          addressee={addressee}
           payerName={receiptFor.payer_name || receiptFor.payer_display}
         />, document.body)}
+      {askingFor && (
+        <Modal
+          title={t('createReceipt')}
+          onClose={() => setAskingFor(null)}
+          confirmClose={false}
+          footer={<>
+            <button className="btn btn-ghost" onClick={() => setAskingFor(null)}>{t('cancel')}</button>
+            <button className="btn btn-primary"
+              onClick={() => { const d = askingFor; setAskingFor(null); setReceiptFor(d) }}>
+              {t('print')}
+            </button>
+          </>}
+        >
+          <div className="field">
+            <label>{t('addressedTo')}</label>
+            <input value={addressee} autoFocus placeholder={t('addressedToHint')}
+              onChange={(e) => setAddressee(e.target.value)} />
+          </div>
+        </Modal>
+      )}
       {detail && (
         <DetailPanel
           title={detail.description || detail.vendor || t('transaction')}
@@ -548,7 +585,7 @@ export default function Transactions() {
           canEdit={canTransact}
           onEdit={() => { setEditing(detail); setDetail(null); setShowForm(true) }}
           extraActions={detail.type === TX.INCOME && isMentor && (
-            <button className="btn" onClick={() => setReceiptFor(detail)}>
+            <button className="btn" onClick={() => { setAddressee(''); setAskingFor(detail) }}>
               {t('createReceipt')}
             </button>
           )}
@@ -622,8 +659,11 @@ export default function Transactions() {
 
       {showForm && (
         <TransactionForm
+          key={formNonce}
+          allowAnother
           onPreview={setPreview}
           editing={editing}
+          initial={formSeed}
           seasonId={activeId}
           accounts={lk.accountsActive}
           categories={lk.categories}
@@ -631,7 +671,20 @@ export default function Transactions() {
           budgets={budgetOptions}
           vendors={lk.vendorsActive}
           onClose={() => setShowForm(false)}
-          onSaved={() => { setShowForm(false); toast.success(t('saved')); load() }}
+          onSaved={(res, opts) => {
+            if (opts?.again) {
+              // Stay open, holding the same answers. The list behind is
+              // refreshed all the same, so the row just saved is already
+              // there when the dialog is finally closed.
+              setFormSeed(opts.draft)
+              setFormNonce((n) => n + 1)
+              toast.success(t('createdAnother'))
+            } else {
+              setShowForm(false)
+              toast.success(t('saved'))
+            }
+            load()
+          }}
         />
       )}
     </div>

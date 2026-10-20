@@ -51,14 +51,38 @@ create policy payment_methods_write on public.payment_methods
 
 grant select, insert, update, delete on public.payment_methods to authenticated;
 
--- Belt and braces for migration 52's table.
+-- Belt and braces for migration 52's table — GUARDED, and the guard is the
+-- important part.
 --
--- Supabase grants new public tables to `authenticated` through default
--- privileges — `vendors` and `transaction_lines` carry no explicit grant and
--- have worked for a year, so this is not a live bug. But every other
--- new-table migration here (37, 41, 45) says it out loud rather than relying
--- on that, and 52 did not. This says it.
-grant select, insert on public.shopping_change_notes to authenticated;
+-- Written as a bare `grant select, insert on public.shopping_change_notes`
+-- this line raised "relation does not exist" on any database where migration
+-- 52 had not been run. The Supabase SQL editor runs a whole file inside one
+-- transaction, so that single failing line DISCARDED EVERYTHING ABOVE IT —
+-- the table, the seed, the policies, the lot. The symptom was the API
+-- reporting that payment_methods was not in its schema cache, which reads
+-- like a caching problem and is nothing of the kind: the table was never
+-- there, because a tidy-up line for an unrelated migration took the whole
+-- file down with it.
+--
+-- A migration must not fail over something that is not its own job.
+do $$
+begin
+  if to_regclass('public.shopping_change_notes') is not null then
+    grant select, insert on public.shopping_change_notes to authenticated;
+  end if;
+end $$;
+
+-- Tell the API about the new table.
+--
+-- PostgREST serves from a cached copy of the schema, so a table created while
+-- it is running does not exist as far as the REST API is concerned — the
+-- client gets "Could not find the table 'public.payment_methods' in the schema
+-- cache" even though the SQL ran perfectly. Supabase usually reloads it on its
+-- own through an event trigger, but not always and not instantly. This asks
+-- for it explicitly, so the table is usable the moment this file finishes.
+notify pgrst, 'reload schema';
 
 -- Verify:
---   select name, rank, is_active from public.payment_methods order by rank;
+--   select name, is_active from public.payment_methods order by name;
+--   -- if the API still says the table is missing, run just this line again:
+--   notify pgrst, 'reload schema';

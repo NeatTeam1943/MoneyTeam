@@ -11,6 +11,10 @@ import { lineAmount } from '../domain/money'
  * put a budget picker on a registration fee and a quantity on a hardware
  * purchase.
  *
+ * Each line holds only what actually differs between lines: what it was for,
+ * the price of one, and how many. The account and the payment method belong
+ * to the payment as a whole and are asked once, above.
+ *
  * ── Why each line is a block and not a row ─────────────────────────────────
  * The first version laid the six fields out in one row and let a media query
  * stack them on a phone. That was the wrong measurement: this control lives
@@ -28,11 +32,11 @@ import { lineAmount } from '../domain/money'
  * that nobody can reconcile against the price list. The only rule is that the
  * net must come to more than zero.
  */
-export default function IncomeLines({ lines, accounts, onChange, methods }) {
+export default function IncomeLines({ lines, onChange }) {
   const { t } = useI18n()
 
   const set = (i, k, v) => onChange(lines.map((l, idx) => (idx === i ? { ...l, [k]: v } : l)))
-  const add = () => onChange([...lines, emptyIncomeLine(lines[lines.length - 1]?.account_id)])
+  const add = () => onChange([...lines, emptyIncomeLine()])
   const remove = (i) => onChange(lines.length > 1 ? lines.filter((_, idx) => idx !== i) : lines)
 
   const total = lines.reduce((s, l) => s + lineAmount(l), 0)
@@ -66,26 +70,6 @@ export default function IncomeLines({ lines, accounts, onChange, methods }) {
                 onChange={(e) => set(i, 'quantity', e.target.value)} />
             </div>
 
-            <div className="il-field">
-              {/* A list, not a closed set — the next parent will pay by
-                  something nobody thought of, so it stays typeable. */}
-              <span>{t('paymentMethod')}</span>
-              <input list="payment-methods" value={l.payment_method || ''}
-                onChange={(e) => set(i, 'payment_method', e.target.value)} />
-            </div>
-
-            <div className="il-field il-account">
-              {/* Per line, because a split registration lands in two accounts
-                  while remaining one payment and one receipt. Wider than its
-                  neighbours because an account name is a name, not a number —
-                  but not a row of its own, which was mostly empty. */}
-              <span>{t('account')}</span>
-              <select value={l.account_id || ''}
-                onChange={(e) => set(i, 'account_id', e.target.value)}>
-                <option value="">—</option>
-                {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-              </select>
-            </div>
             </div>
 
             <div className="il-foot">
@@ -101,10 +85,6 @@ export default function IncomeLines({ lines, accounts, onChange, methods }) {
         )
       })}
 
-      <datalist id="payment-methods">
-        {(methods || []).map((m) => <option key={m} value={m} />)}
-      </datalist>
-
       <div className="il-bar">
         <button type="button" className="btn btn-sm" onClick={add}>+ {t('addIncomeLine')}</button>
         <span style={{ fontSize: 12, color: 'var(--text-faint)' }}>{t('discountHint')}</span>
@@ -114,12 +94,10 @@ export default function IncomeLines({ lines, accounts, onChange, methods }) {
   )
 }
 
-/** A blank line. The account carries over from the line above, because a
- *  split payment is the exception and retyping the same account on every row
- *  is the common case. */
-export const emptyIncomeLine = (accountId = '') => ({
-  description: '', unit_price: '', quantity: 1, payment_method: '', account_id: accountId || '',
-})
+/** A blank line. The account and the payment method are NOT here: they are
+ *  the same for every line of one payment, so they are asked once at the top
+ *  of the form rather than repeated on each row. */
+export const emptyIncomeLine = () => ({ description: '', unit_price: '', quantity: 1 })
 
 /** Shared by the form and anything else that needs the same answer. */
 export const incomeLinesTotal = (lines) => (lines || []).reduce((s, l) => s + lineAmount(l), 0)

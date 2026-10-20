@@ -15,7 +15,7 @@ import { useLookups } from '../lib/useLookups'
 
 const OTHER_TYPES = ['income', 'transfer', 'in_kind'] // expense handled separately (with lines)
 
-export default function TransactionForm({ editing, initial, seasonId, accounts, categories, sources, budgets = [], vendors = [], onClose, onSaved, onPreview }) {
+export default function TransactionForm({ editing, initial, seasonId, accounts, categories, sources, budgets = [], vendors = [], onClose, onSaved, onPreview, allowAnother = false }) {
   const { t } = useI18n()
   const navigate = useNavigate()
   const { isMentor } = useAuth()
@@ -49,18 +49,64 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
   // Income breakdown — a separate list from the expense `lines` above, because
   // the two carry different fields and sharing one array meant one of them
   // always had columns it could not use.
-  const [incLines, setIncLines] = useState(() => [emptyIncomeLine(seed.account_id || '')])
+  const [incLines, setIncLines] = useState(() => (
+    seed.incLines?.length ? seed.incLines.map((l) => ({ ...l })) : [emptyIncomeLine()]
+  ))
   const [privateAmounts, setPrivateAmounts] = useState(() => !!seed.amounts_private)
+  // One payment method for the whole income. It was a field on every line,
+  // which asked the same question once per row and then printed the same
+  // answer down a column of the receipt.
+  const [payMethod, setPayMethod] = useState(seed.payment_method || '')
   const [files, setFiles] = useState([])
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
+  /**
+   * "Create another", as a ticket tracker does it: save, then come straight
+   * back to a form holding the same answers, so entering eight registration
+   * payments is eight names rather than eight full forms.
+   *
+   * Only offered when adding, and only where the caller can honour it
+   * (`allowAnother`). While EDITING an existing row it would mean "save my
+   * changes and then open a copy of this row", which is a different and much
+   * more surprising action; and opened from the shopping list to record a
+   * purchase it would mean buying the same item twice, while that caller is
+   * busy marking the item ordered. Offering a checkbox the parent ignores is
+   * worse than not offering it, so the parent opts in.
+   */
+  // Seeded from the draft, so entering eight payments means ticking it once
+  // and not once per payment.
+  const [again, setAgain] = useState(!!seed.again)
+
+  /**
+   * What the next form starts from. Everything typed, minus the receipts:
+   * carrying those over would attach one invoice to several transactions,
+   * which is the one field that is certainly wrong the second time.
+   */
+  const draft = () => ({
+    ...f,
+    receipt_urls: [],
+    amounts_private: privateAmounts,
+    fx_currency: fx?.currency || null,
+    fx_amount: fx?.amount ?? null,
+    fx_rate: fx?.rate ?? null,
+    lines: lines.map((l) => ({ ...l })),
+    incLines: incLines.map((l) => ({ ...l })),
+    payment_method: payMethod,
+    descMode,
+    again: true,
+  })
+
+  // Every save path ends here, so the checkbox works the same for an expense,
+  // an income and a transfer instead of only the one it was tested on.
+  const wantsAnother = again && allowAnother && !editing
+  const finish = (res) => onSaved(res, wantsAnother ? { again: true, draft: draft() } : null)
 
   // The header description defaults to the comma-joined line descriptions and
   // keeps tracking them as lines are added or renamed — until you type your
   // own, at which point it stops following and stays exactly as written. The
   // ↻ button puts it back on auto. Editing an existing row starts in manual
   // mode, so opening a saved purchase never silently rewrites its description.
-  const [descMode, setDescMode] = useState(() => (seed.description ? 'manual' : 'auto'))
+  const [descMode, setDescMode] = useState(() => seed.descMode || (seed.description ? 'manual' : 'auto'))
 
   // When editing an existing expense, load its lines (or seed one from the header for legacy rows)
   useEffect(() => {
@@ -75,7 +121,10 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
         // An income saved before breakdowns existed has no lines. Seeding one
         // from the header keeps the form editable instead of showing an empty
         // list that would wipe the amount on save.
-        if (data?.length) setIncLines(data)
+        if (data?.length) {
+          setIncLines(data)
+          setPayMethod(data.find((l) => l.payment_method)?.payment_method || '')
+        }
         else setIncLines([{ description: editing.description || '', unit_price: editing.amount || '',
           quantity: 1, payment_method: '', account_id: editing.account_id || '' }])
       })
@@ -203,7 +252,7 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
         p_propose: !isMentor,
       })
       if (error) throw error
-      onSaved({ id: data })
+      finish({ id: data })
     } catch (e) { setErr(e.message || String(e)) } finally { setBusy(false) }
   }
 
@@ -219,7 +268,7 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
   async function saveIncome() {
     const clean = incLines.filter((l) => String(l.unit_price ?? '').trim() !== '' || Number(l.amount))
     if (!clean.length) { setErr(t('needOneLine')); return }
-    if (clean.some((l) => !l.account_id)) { setErr(t('requiredField') + ': ' + t('account')); return }
+    if (!f.account_id) { setErr(t('requiredField') + ': ' + t('account')); return }
     const total = incomeLinesTotal(clean)
     // A discount can take a payment down, never to nothing: an "income" that
     // nets to zero or less is not one. The database enforces this too; the
@@ -234,11 +283,8 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
         type: 'income',
         date: f.date,
         amount: total,
-        // The header still needs ONE account — the table's own shape
-        // constraint requires it for an income. The first line's is the
-        // honest answer: it is where the bulk of a split usually lands, and
-        // the per-line accounts are what the balances actually read.
-        account_id: clean[0].account_id,
+        // One account for the whole income, chosen above.
+        account_id: f.account_id,
         income_source_id: f.income_source_id,
         description: f.description || null,
         payer_name: f.payer_name || null,
@@ -266,13 +312,18 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
           : (Number(l.unit_price) || 0) * (l.quantity == null ? 1 : Number(l.quantity) || 0)),
         unit_price: l.unit_price === '' || l.unit_price == null ? null : Number(l.unit_price),
         quantity: l.quantity == null || l.quantity === '' ? 1 : Number(l.quantity),
-        payment_method: l.payment_method || null,
-        account_id: l.account_id,
+        // Both belong to the payment, not to the line. The method is stamped
+        // on every line so the receipt can print it beside each row.
+        // account_id stays null: the header carries it, which is the path
+        // every income took before breakdowns existed and the one the balance
+        // view already treats as the default.
+        payment_method: payMethod || null,
+        account_id: null,
         description: l.description || null,
         team_scope: f.team_scope || 'both',
       })))
       if (ins.error) throw ins.error
-      onSaved({ id: txId })
+      finish({ id: txId })
     } catch (e) { setErr(e.message || String(e)) } finally { setBusy(false) }
   }
 
@@ -306,7 +357,7 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
         ? await supabase.from('transactions').update(payload).eq('id', editing.id).select('id').single()
         : await supabase.from('transactions').insert(payload).select('id').single()
       if (res.error) throw res.error
-      onSaved(res.data)
+      finish(res.data)
     } catch (e) { setErr(e.message || String(e)) } finally { setBusy(false) }
   }
 
@@ -326,6 +377,12 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
             budgets first. Only offered once there is an amount to try. */}
         {total > 0 && (
           <button className="btn btn-ghost" onClick={openInSimulation}>{t('openInSimulation')}</button>
+        )}
+        {allowAnother && !editing && (
+          <label className="check-inline" title={t('createAnotherHint')}>
+            <input type="checkbox" checked={again} onChange={(e) => setAgain(e.target.checked)} />
+            <span>{t('createAnother')}</span>
+          </label>
         )}
         <button className="btn btn-primary" onClick={save} disabled={busy}>
           {busy ? '…' : (isMentor ? t('save') : t('proposeExpense'))}
@@ -370,12 +427,27 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
           accounts while remaining one payment and one receipt. */}
       {isIncome && (
         <>
-          <IncomeLines
-            lines={incLines}
-            accounts={accounts}
-            methods={lk.paymentMethodsActive.map((m) => m.name)}
-            onChange={setIncLines}
-          />
+          <div className="grid-2">
+            <div className="field">
+              <label>{t('account')} *</label>
+              <select value={f.account_id} onChange={set('account_id')}>
+                <option value="">—</option>
+                {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </div>
+            <div className="field">
+              <label>{t('paymentMethod')}</label>
+              {/* Suggestions, not a closed set: the field stays typeable so a
+                  method nobody has added yet never blocks a payment. */}
+              <input list="payment-methods" value={payMethod}
+                onChange={(e) => setPayMethod(e.target.value)} />
+              <datalist id="payment-methods">
+                {lk.paymentMethodsActive.map((m) => <option key={m.id} value={m.name} />)}
+              </datalist>
+            </div>
+          </div>
+
+          <IncomeLines lines={incLines} onChange={setIncLines} />
           {isMentor && (
             <div className="field">
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
@@ -453,40 +525,61 @@ export default function TransactionForm({ editing, initial, seasonId, accounts, 
 
           <div className="field">
             <label>{t('lines')}</label>
+            {/* Same shape as the income breakdown: a block per line with a
+                label on every field. The old layout was four controls on one
+                row with placeholders for labels, and a placeholder is gone the
+                moment there is a value — so a filled row said nothing about
+                which box was the category and which was the programme. */}
             {lines.map((l, i) => (
-              <div key={i} className="line-row">
-                <select value={l.category_id} onChange={(e) => setLineCategory(i, e.target.value)}>
-                  <option value="">{t('uncategorized')}</option>
-                  {lk.categoryTree.map((c) => (
-                    <option key={c.id} value={c.id}>{c.path || c.name}</option>
-                  ))}
-                </select>
-                <div>
-                  <CurrencyAmountInput compact value={l.amount} onChange={(v) => setLine(i, 'amount', v)}
-                    fx={l.fx} onFxChange={(fxVal) => setLine(i, 'fx', fxVal)} placeholder="₪" />
+              <div key={i} className="income-line">
+                <div className="il-field">
+                  <span>{t('description')}</span>
+                  <input value={l.description}
+                    onChange={(e) => setLine(i, 'description', e.target.value)} />
                 </div>
-                <select className="line-scope" value={l.team_scope || 'both'} title={t('lineScope')}
-                  onChange={(e) => setLineScope(i, e.target.value)}>
-                  <option value="both">{t('scope_both')}</option>
-                  <option value="frc">{t('scope_frc')}</option>
-                  <option value="ftc">{t('scope_ftc')}</option>
-                </select>
-                <input className="line-desc" placeholder={t('description')} value={l.description}
-                  onChange={(e) => setLine(i, 'description', e.target.value)} />
-                {/* Say which pot this lands in. Deriving it silently would be
-                    the same trap as deriving it wrongly. */}
-                <span className="line-paidfrom" style={{
-                  gridColumn: '1 / -1', fontSize: 12, color: 'var(--text-faint)',
-                  marginTop: -2,
-                }}>
-                  {(() => {
-                    const r = budgetFor(l.category_id, l.team_scope)
-                    if (!r.budget) return t('noBudgetCovers')
-                    const via = budgets.find((b) => b.id === r.budget.id)
-                    return `${t('paidFrom')}: ${via?.label || '—'}${r.exact ? '' : ' ↑'}`
-                  })()}
-                </span>
-                <button className="btn btn-ghost btn-sm btn-danger" onClick={() => removeLine(i)}>✕</button>
+
+                <div className="il-mid">
+                  <div className="il-field il-account">
+                    <span>{t('category')}</span>
+                    <select value={l.category_id} onChange={(e) => setLineCategory(i, e.target.value)}>
+                      <option value="">{t('uncategorized')}</option>
+                      {lk.categoryTree.map((c) => (
+                        <option key={c.id} value={c.id}>{c.path || c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="il-field">
+                    <span>{t('amount')}</span>
+                    <CurrencyAmountInput compact value={l.amount} onChange={(v) => setLine(i, 'amount', v)}
+                      fx={l.fx} onFxChange={(fxVal) => setLine(i, 'fx', fxVal)} placeholder="₪" />
+                  </div>
+                  <div className="il-field">
+                    <span>{t('teamScope')}</span>
+                    <select value={l.team_scope || 'both'} title={t('lineScope')}
+                      onChange={(e) => setLineScope(i, e.target.value)}>
+                      <option value="both">{t('scope_both')}</option>
+                      <option value="frc">{t('scope_frc')}</option>
+                      <option value="ftc">{t('scope_ftc')}</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="il-foot">
+                  {/* Say which pot this lands in. Deriving it silently would be
+                      the same trap as deriving it wrongly. */}
+                  <span style={{ fontSize: 12, color: 'var(--text-faint)' }}>
+                    {(() => {
+                      const r = budgetFor(l.category_id, l.team_scope)
+                      if (!r.budget) return t('noBudgetCovers')
+                      const via = budgets.find((b) => b.id === r.budget.id)
+                      return `${t('paidFrom')}: ${via?.label || '—'}${r.exact ? '' : ' ↑'}`
+                    })()}
+                  </span>
+                  {lines.length > 1 && (
+                    <button type="button" className="btn btn-ghost btn-sm btn-danger"
+                      onClick={() => removeLine(i)}>{t('delete')}</button>
+                  )}
+                </div>
               </div>
             ))}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>

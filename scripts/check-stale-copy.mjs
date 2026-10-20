@@ -236,7 +236,7 @@ for (const f of ['src/index.css', ...walk('src')]) {
 // get buttons the database refuses; if the JS is stricter you get a quiet hole
 // where the UI is the only thing stopping someone, and this app sends PATCHes
 // straight to PostgREST.
-const sql = (() => { try { return src('sql/51_finance_lead.sql') } catch { return '' } })()
+const sql = (() => { try { return src('51_finance_lead.sql') } catch { return '' } })()
 let ruleDrift = 0
 if (sql) {
   const consts = src('src/domain/constants.js')
@@ -263,7 +263,7 @@ if (sql) {
     const b = sqlList(re)
     if (!a || !b) {
       ruleDrift++
-      console.log(`  CANNOT COMPARE ${name} WITH sql/51_finance_lead.sql`)
+      console.log(`  CANNOT COMPARE ${name} WITH 51_finance_lead.sql`)
       console.log('         one of the two lists could not be read — check the names still match')
       continue
     }

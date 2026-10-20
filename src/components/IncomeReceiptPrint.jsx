@@ -1,6 +1,16 @@
 import { useI18n } from '../lib/i18n'
 import { lineAmount } from '../domain/money'
 
+// Imported rather than written as "./receipt-x.png" against the public folder.
+// A bare string is resolved at RUN time against whatever the document's URL
+// happens to be, which silently 404s if the app is reached without the
+// trailing slash; imported, the path is resolved at BUILD time and the build
+// fails loudly if a file ever goes missing instead of printing a blank page.
+import logoIriya from '../assets/receipt-iriya.png'
+import logoNeatTeam from '../assets/receipt-neatteam.png'
+import logoMechanic from '../assets/receipt-mechanic.png'
+import logoBegin from '../assets/receipt-begin.png'
+
 /**
  * Plain digits, grouped, with the decimals dropped when they are both zero.
  * Deliberately NOT the app's money() helper: that puts a ₪ on every figure,
@@ -70,10 +80,10 @@ export default function IncomeReceiptPrint({ tx, lines, addressee, payerName }) 
             them with the text would put the school's crest on the wrong
             side of the city's. */}
         <div className="receipt-logos">
-          <img src="./receipt-iriya.png" alt="" />
-          <img src="./receipt-neatteam.png" alt="" />
-          <img src="./receipt-mechanic.png" alt="" />
-          <img src="./receipt-begin.png" alt="" />
+          <img src={logoIriya} alt="" />
+          <img src={logoNeatTeam} alt="" />
+          <img src={logoMechanic} alt="" />
+          <img src={logoBegin} alt="" />
         </div>
 
         <div className="receipt-date">{txDate}</div>

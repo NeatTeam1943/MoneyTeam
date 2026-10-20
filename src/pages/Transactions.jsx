@@ -22,6 +22,7 @@ import DetailPanel from '../components/DetailPanel'
 import IncomeReceiptPrint from '../components/IncomeReceiptPrint'
 import Modal from '../components/Modal'
 import { createPortal } from 'react-dom'
+import { printWhenReady } from '../lib/printWhenReady'
 import SortControls from '../components/SortControls'
 
 export default function Transactions() {
@@ -90,9 +91,14 @@ export default function Transactions() {
       setReceiptFor(null)
     }
     window.addEventListener('afterprint', done, { once: true })
-    const id = setTimeout(() => window.print(), 50)
+
+    // Waits for the four crests to arrive before opening the dialog; see
+    // printWhenReady for why printing straight away produced a sheet with no
+    // letterhead on it.
+    const printing = printWhenReady('.receipt-print')
+
     return () => {
-      clearTimeout(id)
+      printing.cancel()
       window.removeEventListener('afterprint', done)
       document.body.classList.remove('printing-receipt')
       document.title = prevTitle
@@ -558,26 +564,6 @@ export default function Transactions() {
           addressee={addressee}
           payerName={receiptFor.payer_name || receiptFor.payer_display}
         />, document.body)}
-      {askingFor && (
-        <Modal
-          title={t('createReceipt')}
-          onClose={() => setAskingFor(null)}
-          confirmClose={false}
-          footer={<>
-            <button className="btn btn-ghost" onClick={() => setAskingFor(null)}>{t('cancel')}</button>
-            <button className="btn btn-primary"
-              onClick={() => { const d = askingFor; setAskingFor(null); setReceiptFor(d) }}>
-              {t('print')}
-            </button>
-          </>}
-        >
-          <div className="field">
-            <label>{t('addressedTo')}</label>
-            <input value={addressee} autoFocus placeholder={t('addressedToHint')}
-              onChange={(e) => setAddressee(e.target.value)} />
-          </div>
-        </Modal>
-      )}
       {detail && (
         <DetailPanel
           title={detail.description || detail.vendor || t('transaction')}
@@ -654,6 +640,27 @@ export default function Transactions() {
         />
       )}
 
+      {askingFor && (
+        <Modal
+          stacked
+          title={t('createReceipt')}
+          onClose={() => setAskingFor(null)}
+          confirmClose={false}
+          footer={<>
+            <button className="btn btn-ghost" onClick={() => setAskingFor(null)}>{t('cancel')}</button>
+            <button className="btn btn-primary"
+              onClick={() => { const d = askingFor; setAskingFor(null); setReceiptFor(d) }}>
+              {t('print')}
+            </button>
+          </>}
+        >
+          <div className="field">
+            <label>{t('addressedTo')}</label>
+            <input value={addressee} autoFocus placeholder={t('addressedToHint')}
+              onChange={(e) => setAddressee(e.target.value)} />
+          </div>
+        </Modal>
+      )}
       {preview && <ReceiptPreview
           paths={preview.paths} path={preview.path} number={preview.number} onClose={() => setPreview(null)} />}
 

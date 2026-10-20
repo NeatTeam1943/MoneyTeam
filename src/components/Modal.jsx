@@ -5,7 +5,14 @@ import { useI18n } from '../lib/i18n'
 // to throw away a half-filled form silently. Those two paths now ask first;
 // the explicit "close" and "cancel" buttons still close immediately, so there
 // is always a friction-free way out.
-export default function Modal({ title, onClose, children, footer, confirmClose = true, wide = false }) {
+/**
+ * `stacked` marks a dialog opened from inside another one. Every overlay
+ * shares a z-index, so without it the layering came down to which one React
+ * rendered first — and a dialog opened from the detail view appeared BEHIND
+ * it, so the only way to see what you had just asked for was to close the
+ * window you had asked from.
+ */
+export default function Modal({ title, onClose, children, footer, confirmClose = true, wide = false, stacked = false }) {
   const { t } = useI18n()
 
   const dismiss = useCallback(() => {
@@ -28,7 +35,7 @@ export default function Modal({ title, onClose, children, footer, confirmClose =
 
   return (
     <div
-      className="overlay"
+      className={"overlay" + (stacked ? " overlay-stacked" : "")}
       onMouseDown={(e) => { pressedOnBackdrop.current = e.target === e.currentTarget }}
       onClick={(e) => {
         if (e.target !== e.currentTarget) return

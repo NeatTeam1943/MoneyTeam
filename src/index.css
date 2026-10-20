@@ -82,8 +82,14 @@ button { font-family: inherit; cursor: pointer; }
 
 /* ---------- Buttons ---------- */
 .btn {
-  display: inline-flex; align-items: center; gap: 8px;
+  /* justify-content matters as soon as a button is WIDER than its label —
+     which is most of them on a phone, where the dialog footer stretches each
+     one to fill the row. Without it the flex default is flex-start, so the
+     text hugged the start edge (the right, in RTL) and every stretched
+     button looked knocked out of true. */
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   padding: 9px 15px; border-radius: var(--radius-sm);
+  text-align: center;
   border: 1px solid var(--line-strong); background: var(--panel); color: var(--text);
   font-size: 14px; font-weight: 600; transition: transform .05s, border-color .15s, background .15s;
 }
@@ -287,6 +293,11 @@ table.data th.num { text-align: end; }
 .overlay {
   position: fixed; inset: 0; background: rgba(20, 26, 43, 0.45); backdrop-filter: blur(3px);
   display: flex; align-items: flex-start; justify-content: center; padding: 48px 16px; z-index: 50; overflow-y: auto;
+}
+/* A dialog opened from inside another dialog. Same stacking context, one
+   step up, so it does not depend on which one React happened to render
+   first. */
+.overlay-stacked { z-index: 55;
 }
 .modal { width: 100%; max-width: 520px; box-shadow: 0 24px 60px rgba(20,26,43,.25); }
 .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-block-end: 1px solid var(--line); }

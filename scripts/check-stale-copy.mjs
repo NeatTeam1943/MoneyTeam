@@ -233,11 +233,48 @@ for (const f of ['src/index.css', ...walk('src')]) {
 // The finance lead's rule is written twice: in guard_shopping_status()
 // (migration 51), which is the boundary, and in domain/constants.js, which
 // decides what the UI offers. They have to agree. If the SQL is stricter you
+// ---------------------------------------------------------------------------
+//  Where the migrations live.
+//
+//  They sat in the repo root and then moved into sql/. Both checks below read
+//  them, and both read them from the root — one by name, inside a try/catch
+//  that turned a missing file into an empty string, and one with a readdir
+//  that simply came back empty. Neither said anything: the finance-lead
+//  comparison skipped itself and the column check compared the UI against a
+//  table with no columns, so both reported success while testing nothing.
+//
+//  So the folder is searched for, and NOT FINDING IT IS A FAILURE. A check
+//  that quietly stops checking is worse than no check at all, because it
+//  keeps the reassurance.
+// ---------------------------------------------------------------------------
+const MIGRATIONS_DIR = (() => {
+  for (const dir of ['sql', 'migrations', 'db', '.']) {
+    try {
+      if (readdirSync(dir).some((f) => /^\d+_.*\.sql$/.test(f))) return dir
+    } catch { /* not there */ }
+  }
+  console.log('  NO MIGRATIONS FOUND in sql/, migrations/, db/ or the repo root.')
+  console.log('         Two checks below read them; without them they would pass')
+  console.log('         while comparing nothing. Point MIGRATIONS_DIR at the folder.')
+  process.exit(1)
+})()
+const migrationFiles = readdirSync(MIGRATIONS_DIR)
+  .filter((f) => /^\d+_.*\.sql$/.test(f))
+  .sort((a, b) => parseInt(a, 10) - parseInt(b, 10))
+const migration = (name) => src(`${MIGRATIONS_DIR}/${name}`)
+
 // get buttons the database refuses; if the JS is stricter you get a quiet hole
 // where the UI is the only thing stopping someone, and this app sends PATCHes
 // straight to PostgREST.
-const sql = (() => { try { return src('51_finance_lead.sql') } catch { return '' } })()
 let ruleDrift = 0
+const sql = (() => {
+  try { return migration('51_finance_lead.sql') } catch {
+    ruleDrift++
+    console.log(`  51_finance_lead.sql NOT FOUND in ${MIGRATIONS_DIR}/`)
+    console.log('         the JS/SQL permission comparison cannot run without it')
+    return ''
+  }
+})()
 if (sql) {
   const consts = src('src/domain/constants.js')
   // SHOPPING_STATUS.X -> its string value, so the JS lists can be compared
@@ -263,7 +300,7 @@ if (sql) {
     const b = sqlList(re)
     if (!a || !b) {
       ruleDrift++
-      console.log(`  CANNOT COMPARE ${name} WITH 51_finance_lead.sql`)
+      console.log(`  CANNOT COMPARE ${name} WITH ${MIGRATIONS_DIR}/51_finance_lead.sql`)
       console.log('         one of the two lists could not be read — check the names still match')
       continue
     }
@@ -349,6 +386,109 @@ for (const f of walk('src')) {
   }
 }
 
-bad += inlineSize + lockLeak + unguardedPayer + unbranched + bareUid + statusCopy + undef + ruleDrift + handlerArgs + calledMaps
+
+// ---------------------------------------------------------------------------
+//  A column the UI reads must exist in EVERY view the UI reads it from.
+//
+//  Four separate bugs have now come from a view whose column list went stale
+//  behind a new column (migrations 13, 25, 33, 54, 56). The last one is the
+//  reason this check exists and the one the other checks would never have
+//  caught: transactions_view is `select t.*` and picked the new column up on
+//  its next rebuild, while transactions_guest lists its columns ON PURPOSE —
+//  that list is what keeps a parent from seeing payer names and receipts. A
+//  list that exists to withhold things also withholds the things you meant to
+//  add, in silence: the client asked for `select *`, got every column the view
+//  had, and `row.amounts_private` came back undefined. `undefined && …` is
+//  falsy, so the privacy mask simply never fired and nothing reported a thing.
+//
+//  The rule: for every column of public.transactions that the UI reads by
+//  name, that column must appear in every transaction view the UI queries —
+//  unless it is on WITHHELD below, which is the explicit list of things a
+//  guest is not allowed to see. Forgetting to classify a new column fails the
+//  build, which is the safe direction: the decision gets made deliberately
+//  instead of being discovered on a phone months later.
+// ---------------------------------------------------------------------------
+
+// Deliberately absent from the guest view. Each of these is a thing a parent
+// with no sign-in has no business reading — not an oversight.
+const WITHHELD = new Set([
+  'payer_name',      // whose payment this was
+  'notes',           // free text, written for the team
+  'receipt_url', 'receipt_urls',
+  'approval', 'proposed_by', 'decided_by', 'decided_at', 'decision_note',
+  'created_at', 'created_by', 'updated_at',
+])
+
+// Columns of public.transactions, read out of the migrations themselves.
+const allSql = migrationFiles.map((f) => src(`${MIGRATIONS_DIR}/${f}`)).join('\n')
+const txColumns = new Set()
+{
+  const create = allSql.match(/create table (?:if not exists )?public\.transactions\s*\(([\s\S]*?)\n\);/)
+  if (create) {
+    for (const line of create[1].split('\n')) {
+      // Any identifier is allowed as the type, so a custom enum
+      // ("type transaction_type not null") counts as a column. What is
+      // excluded instead is a line that OPENS or CONTINUES a constraint —
+      // without that, the second line of a multi-line check ("and amount > 0")
+      // parses as a column called "and".
+      const m = line.match(/^\s*([a-z_][a-z0-9_]*)\s+([a-z_][a-z0-9_]*)/i)
+      const STOP = /^(and|or|not|check|primary|foreign|unique|constraint|references|exclude|like|using|with|case|when|then|else|end|select|from|where|join|on)$/i
+      if (m && !STOP.test(m[1]) && !STOP.test(m[2]) && !/[<>=!]/.test(line.split(/\s+/)[2] || '')) {
+        txColumns.add(m[1])
+      }
+    }
+  }
+  // One `alter table` can add several columns in a single statement, so the
+  // statement is taken whole and every name inside it collected — matching
+  // only the first `add column` quietly missed four of them.
+  for (const stmt of allSql.matchAll(/alter table (?:only )?public\.transactions\b([\s\S]*?);/gi)) {
+    for (const col of stmt[1].matchAll(/add column\s+(?:if not exists\s+)?([a-z_][a-z0-9_]*)/gi)) {
+      txColumns.add(col[1])
+    }
+  }
+}
+
+// The views the app reads transactions from, and the columns each exposes.
+// A `t.*` view carries everything, so it is never the problem.
+const viewColumns = new Map()
+for (const m of allSql.matchAll(/create view public\.(transactions\w*|ledger_transactions)\s+(?:with \([^)]*\)\s+)?as\s+select([\s\S]*?)from public\.transactions/gi)) {
+  const [, view, body] = m
+  if (/\bt\.\*/.test(body)) { viewColumns.set(view, null); continue }   // everything
+  const cols = new Set([...body.matchAll(/\bt\.([a-z_][a-z0-9_]*)/gi)].map((x) => x[1]))
+  viewColumns.set(view, cols)   // later definitions overwrite earlier ones
+}
+
+// Which of those views the UI actually queries.
+const queried = new Set()
+for (const f of walk('src')) {
+  for (const m of src(f).matchAll(/from\(\s*(?:[^)]*?\?\s*)?['"]([a-z_]+)['"]\s*(?::\s*['"]([a-z_]+)['"]\s*)?\)/g)) {
+    for (const n of [m[1], m[2]]) if (n && viewColumns.has(n)) queried.add(n)
+  }
+}
+
+// Which transaction columns the UI reads by name.
+const readByUi = new Set()
+for (const f of walk('src')) {
+  const text = src(f)
+  for (const col of txColumns) {
+    if (new RegExp(`[.?]\\s*${col}\\b`).test(text)) readByUi.add(col)
+  }
+}
+
+let missingCols = 0
+for (const view of [...queried].sort()) {
+  const cols = viewColumns.get(view)
+  if (cols === null) continue                     // select t.*
+  for (const col of [...readByUi].sort()) {
+    if (WITHHELD.has(col) || cols.has(col)) continue
+    missingCols++
+    console.log(`  COLUMN MISSING FROM A VIEW THE UI READS: ${view} has no ${col}`)
+    console.log(`         the UI reads row.${col}, so it comes back undefined there.`)
+    console.log(`         Add t.${col} to the view, or put ${col} in WITHHELD in this`)
+    console.log(`         script if a guest is deliberately not allowed to see it.`)
+  }
+}
+
+bad += inlineSize + lockLeak + unguardedPayer + unbranched + bareUid + statusCopy + undef + ruleDrift + handlerArgs + calledMaps + missingCols
 console.log(bad ? `\n  ${bad} problem(s)` : '  no stale strings')
 process.exit(bad ? 1 : 0)

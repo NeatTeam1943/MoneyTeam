@@ -73,7 +73,9 @@ from any project subpath.
 ### 1. Supabase
 
 1. Create a project. Authentication → Providers → enable **Google**.
-2. Run the SQL migrations **in numeric order** in the SQL editor (see below).
+2. Run the SQL migrations in `sql/`, **in numeric order**, in the SQL editor
+   (see below). Each file runs inside one transaction, so a single failing
+   line discards the whole file — run them one at a time and read the result.
 3. Create your auth user by signing in once, then insert a `members` row with
    your UID and role `mentor` — the bootstrap insert is at the bottom of
    `sql/01_foundation.sql`.

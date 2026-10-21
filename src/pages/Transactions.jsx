@@ -52,15 +52,6 @@ export default function Transactions() {
   const [detail, setDetail] = useState(null)
 
   /**
-   * Print a figure, or *** when this row's amounts are marked private and the
-   * reader is not a mentor.
-   *
-   * The masking is a DISPLAY rule. `r.amount` stays real in the data, which
-   * is deliberate and is why every total, chart and balance on this page is
-   * still exactly right for a student — only the row stops announcing it.
-   * `amount_display` is the view's copy, null when it should be hidden.
-   */
-  /**
    * The income whose payment summary is being printed.
    *
    * Rendered into document.body rather than into the page, so the print
@@ -105,6 +96,23 @@ export default function Transactions() {
     }
   }, [receiptFor])
 
+  /**
+   * Print a figure, or *** when this row's amounts are marked private and the
+   * reader is not a mentor.
+   *
+   * The masking is a DISPLAY rule, and `r.amount` deliberately stays real:
+   * that is why every total, chart and balance on this page is still exactly
+   * right for a student or a parent — only the row stops announcing itself.
+   * (The view also carries `amount_display`, nulled for non-mentors; the
+   * screen does not use it, because a null amount would have to be added back
+   * for every total.)
+   *
+   * Reads `amounts_private` off the row, so the flag has to BE on the row.
+   * It was missing from the guest view for a release — see migration 56 — and
+   * the symptom was a mask that never fired and never complained, because
+   * `undefined && …` is simply false. check-stale-copy now fails the build if
+   * a column read here is absent from a view the page queries.
+   */
   const masked = (r) => r?.amounts_private && !isMentor
   const amountCell = (r, value) => (masked(r)
     ? <span style={{ color: 'var(--text-faint)', letterSpacing: '.15em' }}>***</span>

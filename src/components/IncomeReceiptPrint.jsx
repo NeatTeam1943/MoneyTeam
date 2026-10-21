@@ -47,7 +47,7 @@ const num = (n) => {
  * Hidden on screen. The screen is a working view with buttons; this is a
  * document.
  */
-export default function IncomeReceiptPrint({ tx, lines, addressee, payerName }) {
+export default function IncomeReceiptPrint({ tx, lines, addressee }) {
   const { t } = useI18n()
   // The transaction's own date, not today's. The sheet records when the money
   // was received; when it happened to be printed is nobody's business.
@@ -88,13 +88,10 @@ export default function IncomeReceiptPrint({ tx, lines, addressee, payerName }) 
 
         <div className="receipt-date">{txDate}</div>
 
-        {/* The name here is the one on "paid by", which the team fills in with
-            the STUDENT's name — so the invoice says whose place it covers.
-            Who it is addressed to is a different person and is asked for
-            separately. */}
-        <h1 className="receipt-title">
-          {t('paymentInvoice')}{payerName ? ` ${payerName}` : ''}
-        </h1>
+        {/* Just the words. "Paid by" is deliberately nowhere on this sheet,
+            title included: the only person named on a printed invoice is the
+            one it is addressed to, below. */}
+        <h1 className="receipt-title">{t('paymentInvoice')}</h1>
 
         <div className="receipt-to">
           <div>{t('addressedTo')}</div>

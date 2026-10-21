@@ -72,8 +72,12 @@ export default function Transactions() {
     // the page header. Left alone that is "MoneyTeam · Neat Team 1943" on
     // every summary, so they are indistinguishable in a downloads folder.
     const prevTitle = document.title
-    const who = receiptFor.payer_name || receiptFor.payer_display || t('unknownPayer')
-    document.title = `${t('paymentInvoice')} ${who}`
+    // The sheet no longer names who paid, so neither does the file. What
+    // distinguishes one invoice from another in a downloads folder is now who
+    // it was made out to, and failing that its date — otherwise every summary
+    // saves under the same name, which is what this title existed to fix.
+    const who = addressee || fmtDate(receiptFor.date) || ''
+    document.title = [t('paymentInvoice'), who].filter(Boolean).join(' - ')
     // Clear up after the dialog closes either way — Chrome fires afterprint
     // on cancel too, so a cancelled print does not leave the app hidden.
     const done = () => {
@@ -94,7 +98,10 @@ export default function Transactions() {
       document.body.classList.remove('printing-receipt')
       document.title = prevTitle
     }
-  }, [receiptFor])
+    // addressee is in the deps because the title is built from it. It cannot
+    // actually change while a receipt is open — the dialog that sets it has
+    // already closed — so this never re-opens the print dialog.
+  }, [receiptFor, addressee])
 
   /**
    * Print a figure, or *** when this row's amounts are marked private and the
@@ -570,7 +577,6 @@ export default function Transactions() {
           tx={receiptFor}
           lines={txLines[receiptFor.id] || []}
           addressee={addressee}
-          payerName={receiptFor.payer_name || receiptFor.payer_display}
         />, document.body)}
       {detail && (
         <DetailPanel

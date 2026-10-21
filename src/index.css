@@ -1204,11 +1204,22 @@ table.data td.desc-cell { min-width: 12rem; }
      document handed to a parent is white. */
   body.printing-receipt { background: #fff; }
 
-  /* The blue rule around the page, as on the original stationery. */
+  /* The blue rule around the page, as on the original stationery — and it
+     has to reach the BOTTOM of the sheet, not stop two thirds down with a
+     band of white under it.
+     The height is taken from the page itself rather than written as a figure
+     in millimetres. 245mm was chosen for A4 and was simply wrong on any other
+     paper: too short on A4 (a hand's width of nothing below the rule) and too
+     tall on US Letter, which is 18mm shorter and would have pushed the frame
+     onto a second page. Phones print to Letter by default, so that was not a
+     hypothetical. Chaining height:100% from html down to the frame makes the
+     browser resolve it against whatever page box it is actually printing. */
+  html, body.printing-receipt { height: 100%; }
+  body.printing-receipt .receipt-print { height: 100%; }
   .receipt-frame {
     border: 2px solid #1f5fd0;
     padding: 14mm 12mm;
-    min-height: 245mm;
+    min-height: 100%;
     box-sizing: border-box;
   }
 

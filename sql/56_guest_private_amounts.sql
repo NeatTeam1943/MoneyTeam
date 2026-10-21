@@ -14,7 +14,7 @@
 --  parent from seeing payer names, receipts and notes. A column list that
 --  exists to withhold things also withholds the things you meant to add, and
 --  it does it silently — the client asked for `select *`, got every column the
---  view had, and `amounts_private` came back undefined. `undefined && …` is
+--  view had,  and `amounts_private` came back undefined. `undefined && …` is
 --  falsy, so the mask was simply never applied and nothing anywhere reported
 --  a problem.
 --

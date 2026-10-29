@@ -105,11 +105,19 @@ export default function Reports() {
         fetchCached('budgets', { seasonId: activeId }),
         fetchCached('shopping_items', { seasonId: activeId }),
         supabase.from('active_goals').select('*'),
+        // ORDER MATTERS: these are read back by position, so each query has to
+        // sit where its name is. `bal` and `rq` were the wrong way round here —
+        // setBalances() was handed the raise requests, which have no `balance`
+        // field, so "balance today" on this page read ₪0.00 while the dashboard
+        // showed the real figure from the same view; and the budget-change
+        // history was handed the account balances and drew them as a column of
+        // 0.00 ← 0.00. Nothing errored: both lists are arrays of objects, and
+        // reading a field that is not there just gives undefined.
+        supabase.from('account_balances').select('*'),
         // Approved raises only: the report explains why a ceiling moved,
         // and a rejected request did not move one.
         supabase.from('budget_raise_requests').select('*').eq('season_id', activeId)
           .eq('status', 'approved').order('decided_at', { ascending: false }),
-        supabase.from('account_balances').select('*'),
         // Where the season opened, so the report can show the direction of
         // travel and not just the current position.
         supabase.rpc('season_opening_balances', { p_season_id: activeId }),
@@ -119,9 +127,9 @@ export default function Reports() {
       if (!bg.error) setBudgets(bg.data || [])
       if (!sh.error) setShopping(sh.data || [])
       if (!gl.error) setGoals(gl.data || [])
-        if (!bal.error) setBalances(bal.data || [])
-        if (!op.error) setOpening(op.data || [])
-        if (!rq.error) setRaises(rq.data || [])
+      if (!bal.error) setBalances(bal.data || [])
+      if (!rq.error) setRaises(rq.data || [])
+      if (!op.error) setOpening(op.data || [])
     } catch (e) {
       if (e.message === 'timeout') toast.error(t('loadTimedOut'))
     } finally { setLoading(false) }

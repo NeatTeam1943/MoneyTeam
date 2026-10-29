@@ -47,30 +47,57 @@ const num = (n) => {
  * Hidden on screen. The screen is a working view with buttons; this is a
  * document.
  */
-export default function IncomeReceiptPrint({ tx, lines, addressee }) {
+export default function IncomeReceiptPrint({ txs, linesByTx, addressee }) {
   const { t } = useI18n()
-  // The transaction's own date, not today's. The sheet records when the money
-  // was received; when it happened to be printed is nobody's business.
+  // Every row on the sheet, from however many payments were selected. One
+  // parent handing over cash and three post-dated cheques is four separate
+  // incomes in the ledger — each has to be, so the balance is right on the day
+  // each one lands — but it is ONE arrangement to the family, and one sheet is
+  // the document they can read. Each row keeps its own payment's date.
+  const rows = []
+  for (const tx of txs || []) {
+    const ls = (linesByTx && linesByTx[tx.id]) || []
+    if (ls.length) {
+      for (const l of ls) rows.push({ ...l, _date: tx.date })
+    } else {
+      /**
+       * An income saved before breakdowns existed has no lines, and printing
+       * one produced an invoice with no rows and a total of zero — a sheet
+       * stating that the parent paid nothing. The header IS the single line
+       * in that case.
+       */
+      rows.push({
+        id: tx.id,
+        description: tx.description || t('income'),
+        unit_price: tx.amount,
+        quantity: 1,
+        amount: tx.amount,
+        payment_method: null,
+        _date: tx.date,
+      })
+    }
+  }
+  const total = rows.reduce((s, l) => s + lineAmount(l), 0)
+
+  // The date column earns its place only when the rows disagree about the
+  // date. On an ordinary single payment it is the same value repeated down a
+  // column, which is why it was taken off the sheet; on a cheque arrangement
+  // it is the whole point of the document.
+  const dates = [...new Set(rows.map((r) => r._date).filter(Boolean))]
+  const showDates = dates.length > 1
+
   // dd/mm/yyyy with slashes, which is how the date is written on the sheet
   // this copies. Built by hand rather than with toLocaleDateString, which
   // returns dots for he-IL and would quietly disagree with the stationery.
-  const d = tx?.date ? new Date(tx.date) : new Date()
   const pad = (n) => String(n).padStart(2, '0')
-  const txDate = `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`
-
-  /**
-   * An income saved before breakdowns existed has no lines, and printing one
-   * produced an invoice with no rows and a total of zero — a sheet stating
-   * that the parent paid nothing. The header IS the single line in that case.
-   */
-  const rows = (lines && lines.length) ? lines : (tx ? [{
-    description: tx.description || t('income'),
-    unit_price: tx.amount,
-    quantity: 1,
-    amount: tx.amount,
-    payment_method: null,
-  }] : [])
-  const total = rows.reduce((s, l) => s + lineAmount(l), 0)
+  const asDate = (v) => {
+    const d = v ? new Date(v) : new Date()
+    return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`
+  }
+  // The sheet's own date is the earliest payment on it — when the arrangement
+  // was made. Nothing is lost by that choice when the rows differ, because
+  // then each row prints its own.
+  const txDate = asDate(dates.length ? dates.slice().sort()[0] : null)
 
   return (
     <div className="receipt-print">
@@ -106,6 +133,7 @@ export default function IncomeReceiptPrint({ tx, lines, addressee }) {
         <table className="receipt-table">
           <thead>
             <tr>
+              {showDates && <th>{t('date')}</th>}
               <th>{t('description')}</th>
               {/* Per ITEM, with the count beside it. The two are different
                   numbers the moment a quantity is not 1, and a parent checking
@@ -121,6 +149,7 @@ export default function IncomeReceiptPrint({ tx, lines, addressee }) {
               const amount = lineAmount(l)
               return (
                 <tr key={l.id || i}>
+                  {showDates && <td className="num">{asDate(l._date)}</td>}
                   <td>{l.description || '—'}</td>
                   <td className="num">{num(l.unit_price != null ? l.unit_price : amount)}</td>
                   <td className="num">{l.quantity ?? 1}</td>
@@ -131,7 +160,7 @@ export default function IncomeReceiptPrint({ tx, lines, addressee }) {
             })}
             <tr className="receipt-total-row">
               <td>{t('total')}</td>
-              <td /><td /><td />
+              <td /><td /><td />{showDates && <td />}
               <td className="num">{num(total)}</td>
             </tr>
           </tbody>
@@ -144,7 +173,9 @@ export default function IncomeReceiptPrint({ tx, lines, addressee }) {
           <span className="receipt-sign-rule" />
         </div>
 
-        {tx?.notes && <div className="receipt-notes">{tx.notes}</div>}
+        {(txs || []).map((tx) => tx.notes && (
+          <div key={tx.id} className="receipt-notes">{tx.notes}</div>
+        ))}
       </div>
     </div>
   )

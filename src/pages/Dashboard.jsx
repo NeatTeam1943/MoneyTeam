@@ -120,6 +120,14 @@ export default function Dashboard() {
   const cashOnHand = useMemo(
     () => balances.reduce((s, b) => s + (Number(b.balance) || 0), 0), [balances])
 
+  // Money that is committed but has not arrived — a post-dated cheque, most
+  // often. It is deliberately NOT part of the balance above (migration 57),
+  // and it is shown beside it rather than left out, because money the team is
+  // owed is still something they need to see. Net, so a future-dated expense
+  // counts against it.
+  const expected = useMemo(
+    () => balances.reduce((s, b) => s + (Number(b.expected) || 0), 0), [balances])
+
   // Under a single-program filter, how much of the expense is that program's
   // alone and how much is shared. Null in the full view, where the question
   // does not arise.
@@ -194,6 +202,11 @@ export default function Dashboard() {
         )}
         <Stat k={t('balanceOnHand')} v={money(cashOnHand)}
           c={cashOnHand < 0 ? 'var(--danger)' : 'var(--ok)'} />
+        {/* Only when there is any. On a season with no post-dated money this
+            is a zero that answers a question nobody asked. */}
+        {expected !== 0 && (
+          <Stat k={t('expectedToArrive')} v={money(expected)} c="var(--text-dim)" />
+        )}
         {split && (
           <>
             <Stat k={t('expenseOnlyFor').replace('{p}', split.program.toUpperCase())}

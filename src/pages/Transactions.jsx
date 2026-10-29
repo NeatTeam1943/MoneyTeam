@@ -64,9 +64,21 @@ export default function Transactions() {
   // carries the student's name. Asked for rather than guessed: the two are
   // different people and the sheet names both.
   const [askingFor, setAskingFor] = useState(null)
+  /**
+   * Rows ticked for one payment summary.
+   *
+   * A family that pays with cash and three post-dated cheques is four incomes
+   * in the ledger — it has to be, so each lands in the balance on its own day
+   * — but it is one arrangement to them, and four separate sheets is noise.
+   * Ticking the rows says which payments belong on one document.
+   *
+   * Only incomes are selectable, and only a mentor sees the boxes, because
+   * producing the summary is the only thing a selection does here.
+   */
+  const [selected, setSelected] = useState(() => new Set())
   const [addressee, setAddressee] = useState('')
   useEffect(() => {
-    if (!receiptFor) return
+    if (!receiptFor?.length) return
     document.body.classList.add('printing-receipt')
     // The browser names the saved PDF after document.title, and prints it in
     // the page header. Left alone that is "MoneyTeam · Neat Team 1943" on
@@ -76,7 +88,7 @@ export default function Transactions() {
     // distinguishes one invoice from another in a downloads folder is now who
     // it was made out to, and failing that its date — otherwise every summary
     // saves under the same name, which is what this title existed to fix.
-    const who = addressee || fmtDate(receiptFor.date) || ''
+    const who = addressee || fmtDate(receiptFor[0]?.date) || ''
     document.title = [t('paymentInvoice'), who].filter(Boolean).join(' - ')
     // Clear up after the dialog closes either way — Chrome fires afterprint
     // on cancel too, so a cancelled print does not leave the app hidden.
@@ -120,6 +132,11 @@ export default function Transactions() {
    * `undefined && …` is simply false. check-stale-copy now fails the build if
    * a column read here is absent from a view the page queries.
    */
+  const toggleSel = (id) => setSelected((s) => {
+    const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n
+  })
+  const clearSelection = () => setSelected(new Set())
+
   const masked = (r) => r?.amounts_private && !isMentor
   const amountCell = (r, value) => (masked(r)
     ? <span style={{ color: 'var(--text-faint)', letterSpacing: '.15em' }}>***</span>
@@ -264,6 +281,7 @@ export default function Transactions() {
   // row showed the full receipt while claiming to be a filtered view, which
   // overstates that program's spending by the other program's share.
   const scopeAmount = (r) => attributableAmount(r, txLines, ts)
+  const canSelect = isMentor
 
   const scopesOf = (r) => {
     const own = txLines[r.id] || []
@@ -373,6 +391,7 @@ export default function Transactions() {
 
   // Totals of what is actually on screen, using in-view amounts — so the sum
   // under an FRC filter excludes the FTC half of a split purchase.
+
   const listTotals = useMemo(() => {
     let income = 0, expense = 0
     for (const r of filtered) {
@@ -382,6 +401,18 @@ export default function Transactions() {
     }
     return { income, expense }
   }, [filtered, txLines, ts])   // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * The ticked rows, pruned to what is actually on screen.
+   *
+   * Ticking rows and then filtering them away used to strand them in the
+   * shopping list: the box was gone but the id stayed in the set, so the count
+   * kept climbing with nothing to clear it. Deriving the selection from the
+   * visible rows means "clear" is always reachable and the count never
+   * describes rows nobody can see.
+   */
+  const selectedRows = useMemo(
+    () => filtered.filter((r) => selected.has(r.id)), [filtered, selected])
 
   function doExport() {
     // Ship the in-view share with each row so the workbook can hold both the
@@ -467,10 +498,26 @@ export default function Transactions() {
         )}
       </div>
 
+      {/* Appears only once something is ticked, so the page is unchanged for
+          anyone not building a summary. */}
+      {canSelect && selectedRows.length > 0 && (
+        <div className="toolbar">
+          <button className="btn btn-primary"
+            onClick={() => { setAddressee(''); setAskingFor(selectedRows) }}>
+            {t('createReceipt')} ({selectedRows.length})
+          </button>
+          <button className="btn btn-sm" onClick={clearSelection}>{t('selectNone')}</button>
+          <span className="mono" style={{ fontWeight: 700 }}>
+            {t('selectedTotal')}: {money(selectedRows.reduce((sum, r) => sum + (Number(r.amount) || 0), 0))}
+          </span>
+        </div>
+      )}
+
       <div className="panel table-wrap">
         <table className="data">
           <thead>
             <tr>
+              {canSelect && <th />}
               {th('date', t('date'))}
               {th('type', t('type'))}
               <th>{t('teamScope')}</th>
@@ -486,6 +533,17 @@ export default function Transactions() {
           <tbody>
             {filtered.map((r) => (
               <tr key={r.id}>
+                {/* Incomes only: the summary is the one thing a selection
+                    does, and a tick box on an expense would offer an action
+                    that does not exist. */}
+                {canSelect && (
+                  <td>
+                    {r.type === TX.INCOME && (
+                      <input type="checkbox" style={{ width: 'auto' }}
+                        checked={selected.has(r.id)} onChange={() => toggleSel(r.id)} />
+                    )}
+                  </td>
+                )}
                 <td className="mono">{fmtDate(r.date)}</td>
                 <td><span className={typePill[r.type]}>{t(r.type)}</span></td>
                 <td style={{ whiteSpace: 'nowrap' }}>
@@ -572,10 +630,10 @@ export default function Transactions() {
 
       {isMentor && <ApprovalQueue rows={pendingRows} onDecide={decide} busyId={decidingId} />}
 
-      {receiptFor && createPortal(
+      {receiptFor?.length > 0 && createPortal(
         <IncomeReceiptPrint
-          tx={receiptFor}
-          lines={txLines[receiptFor.id] || []}
+          txs={receiptFor}
+          linesByTx={txLines}
           addressee={addressee}
         />, document.body)}
       {detail && (
@@ -585,7 +643,7 @@ export default function Transactions() {
           canEdit={canTransact}
           onEdit={() => { setEditing(detail); setDetail(null); setShowForm(true) }}
           extraActions={detail.type === TX.INCOME && isMentor && (
-            <button className="btn" onClick={() => { setAddressee(''); setAskingFor(detail) }}>
+            <button className="btn" onClick={() => { setAddressee(''); setAskingFor([detail]) }}>
               {t('createReceipt')}
             </button>
           )}

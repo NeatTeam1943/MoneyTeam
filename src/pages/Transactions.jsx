@@ -16,6 +16,7 @@ import { useTeamScope } from '../context/TeamScopeContext'
 import { TeamScopeBadge } from '../components/TeamScope'
 import { attributableAmount } from '../lib/teamScope'
 import { TX } from '../domain/constants'
+import { todayLocal, notYetArrived } from '../domain/dates'
 import ReceiptPreview from '../components/ReceiptPreview'
 import ApprovalQueue from '../components/ApprovalQueue'
 import DetailPanel from '../components/DetailPanel'
@@ -136,6 +137,11 @@ export default function Transactions() {
     const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n
   })
   const clearSelection = () => setSelected(new Set())
+
+  // The same rule as migration 57, so the row and the balance never disagree
+  // about which side of today a payment falls on.
+  const today = useMemo(() => todayLocal(), [])
+  const isFuture = (r) => notYetArrived(r?.date, today)
 
   const masked = (r) => r?.amounts_private && !isMentor
   const amountCell = (r, value) => (masked(r)
@@ -532,7 +538,9 @@ export default function Transactions() {
           </thead>
           <tbody>
             {filtered.map((r) => (
-              <tr key={r.id}>
+              <tr key={r.id}
+                className={isFuture(r) ? 'row-future' : undefined}
+                title={isFuture(r) ? t('notYetArrivedHint') : undefined}>
                 {/* Incomes only: the summary is the one thing a selection
                     does, and a tick box on an expense would offer an action
                     that does not exist. */}

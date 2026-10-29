@@ -272,6 +272,15 @@ table.data th {
 table.data th:hover { color: var(--text-dim); }
 table.data td { padding: 11px 12px; border-block-end: 1px solid var(--line); vertical-align: middle; color: var(--text); }
 table.data tr:hover td { background: var(--panel-2); }
+
+/* A transaction dated ahead — a post-dated cheque, most often. The money is
+   committed but has not arrived, and since migration 57 it is deliberately
+   NOT in the balance, so the row has to look different from the ones that
+   are. Muted rather than faded: `opacity` would dim the figures too, and an
+   amount you have to squint at is worse than one that is simply a quieter
+   colour. The italic date carries it at a glance down the column. */
+table.data tr.row-future td { color: var(--text-dim); }
+table.data tr.row-future td.mono:first-of-type { font-style: italic; }
 .num { font-family: var(--font-mono); text-align: end; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* A numeric column's HEADER has to sit over its numbers.
